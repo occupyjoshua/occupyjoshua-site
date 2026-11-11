@@ -1,0 +1,13 @@
+{
+  "name": "occupyjoshua-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "serve": "node build.js && python3 -m http.server 8080",
+    "sync:bible": "rm -rf bible && cd ../bible-ascii && git ls-files | grep -vE '^(demo|tools|\\.claude)/|\\.(txt|py|md|mjs)$|^\\.' | rsync -a --files-from=- . ../occupyjoshua-site/bible/"
+  },
+  "dependencies": {
+    "marked": "^18.2.0"
+  }
+}

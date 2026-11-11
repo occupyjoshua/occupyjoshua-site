@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acts, in Letters</title>
+<meta name="description" content="The whole Acts of the Apostles, every letter of it, lit as one picture: a great fire burning in the night, cloven tongues like as of fire. Zoom in to read.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Acts, in Letters">
+<meta property="og:description" content="The whole Acts of the Apostles, every letter of it, lit as one picture: a great fire burning in the night, cloven tongues like as of fire. Zoom in to read.">
+<!-- shortcut: relative og:image, which some link scrapers ignore; make it absolute once the domain is chosen -->
+<meta property="og:image" content="poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='24' font-size='24' text-anchor='middle' fill='%23e6d8b8'%3E%E2%9D%A7%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/NimbusMonoPS-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/NimbusMonoPS-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  /* the atlas font ships with the site, so every OS draws the same letters (URW, AGPL-3.0; see fonts/README) */
+  @font-face { font-family: "Nimbus Mono PS"; font-weight: 400; src: url(../fonts/NimbusMonoPS-Regular.woff2) format("woff2"); }
+  @font-face { font-family: "Nimbus Mono PS"; font-weight: 700; src: url(../fonts/NimbusMonoPS-Bold.woff2) format("woff2"); }
+  :root { --ink: #e6d8b8; --dim: #a39579; --rule: #e6d8b8a0; --bg: #000; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+  /* the HUD is set like a printed page: a running head above, the place in the text below */
+  .hud { position: fixed; font: 400 15px/1 "EB Garamond", "P052", Palatino, Georgia, serif;
+         color: var(--ink); pointer-events: none; user-select: none; white-space: pre;
+         text-shadow: 0 0 6px #000, 0 0 12px #000; }
+  /* running head centred in spaced small capitals, over a fleuron between two hairlines */
+  #head { top: 14px; left: 50%; transform: translateX(-50%); padding-left: 0.26em; font-variant: all-small-caps;
+          letter-spacing: 0.26em; font-size: 15px; }
+  #mark { top: 33px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+          color: var(--ink); font-size: 14px; }
+  #mark i { width: 96px; height: 1px; background: linear-gradient(90deg, #0000, var(--rule)); box-shadow: 0 0 5px #000; }
+  #mark i:last-child { background: linear-gradient(90deg, var(--rule), #0000); }
+  #place { bottom: 14px; left: 20px; padding-bottom: 4px; border-bottom: 1px solid var(--rule); font-size: 19px;
+           font-style: italic; font-variant-numeric: oldstyle-nums; }
+  /* tabular figures, so the count does not shift sideways while it changes */
+  #count { bottom: 18px; right: 20px; color: var(--dim); font-size: 15px; font-variant-numeric: oldstyle-nums tabular-nums; }
+  #count:not(:empty)::after { content: " letters"; font-variant: all-small-caps; letter-spacing: 0.08em; }
+  /* dark margins top and bottom, so the HUD reads over bright light */
+  .margin { position: fixed; left: 0; right: 0; height: 64px; pointer-events: none; }
+  .margin.top { top: 0; background: linear-gradient(#000c, #0000); }
+  .margin.bottom { bottom: 0; background: linear-gradient(#0000, #000c); }
+  @media (max-width: 600px) { #mark i { width: 40px; } }
+  /* the text itself, for screen readers and search; the canvas is only a picture of it */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .poster { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="The Acts of the Apostles, its letters lit by a great fire burning in the night on a stack of logs, its tongues leaping and parting, smoke rolling above and sparks climbing: cloven tongues like as of fire"></canvas>
+<article class="sr-only" id="text" aria-label="The Acts of the Apostles"></article>
+<div class="margin top"></div><div class="margin bottom"></div>
+<div class="hud" id="head"></div>
+<div class="hud" id="place"></div>
+<div class="hud" id="mark"><i></i>&#x2767;<i></i></div>
+<div class="hud" id="count"></div>
+<script src="text-data.js"></script>
+<script>
+"use strict";
+// PIECE comes from text-data.js (scripts/build_text.py): { title, text, marks: [[offset, key, label]], light, scene, font }
+const params = new URLSearchParams(location.search);
+const CHARS = Array.from(PIECE.text);   // by code point, so offsets match Python's
+const N = CHARS.length;
+const CELL_ASPECT = 0.6;          // cell width / height; glyph tiles are 36x60
+const TILE_W = 36, TILE_H = 60;
+const TEXT_W = 1024;              // text texture row width
+const MAX_CELL_CSS = 72;          // deepest zoom: cell height in CSS px
+const FONT = params.get("font") || PIECE.font || "Nimbus Mono PS";
+const GLYPH_SCALE = Number(params.get("scale")) || 0.95;  // < 1 leaves more space around each letter
+const SCENE_SRC = params.get("scene") || PIECE.scene || "";  // empty: the procedural scene below; else an image or video
+const IS_VIDEO = /\.(mp4|webm|mov|m4v|ogv)$/i.test(SCENE_SRC);
+const MARKS = PIECE.marks || [];
+
+// glyph table from the text itself: index 0 is blank, 1.. are the distinct characters
+const GLYPH_LIST = [...new Set(CHARS)].filter(ch => ch.trim()).sort();
+const GLYPHS = GLYPH_LIST.length;
+const GLYPH_OF = new Map(GLYPH_LIST.map((ch, i) => [ch, i + 1]));
+
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+const hud = { head: document.getElementById("head"), place: document.getElementById("place"), count: document.getElementById("count") };
+hud.head.textContent = PIECE.title || "";
+document.getElementById("text").textContent = PIECE.text;
+function fail(msg) { hud.place.textContent = msg; throw new Error(msg); }
+// a still of the piece instead of a black or frozen page
+function showStill(msg) {
+  canvas.replaceWith(Object.assign(document.createElement("img"), { src: "poster.jpg", alt: canvas.getAttribute("aria-label"), className: "poster" }));
+  hud.place.textContent = msg;
+}
+if (!gl) {
+  showStill("A still: this browser has WebGL2 turned off.\nRestart it, turn on hardware acceleration,\nor update it to see the scene move.");
+  throw new Error("no webgl2");
+}
+// a GPU reset (often the frame taking too long on a weak card) loses the context; Chrome then blocks WebGL here until a restart
+let lost = false;
+canvas.addEventListener("webglcontextlost", () => { lost = true; showStill("A still: the graphics card stopped drawing.\nRestart the browser to see the scene move."); });
+if (GLYPHS > 255 || GLYPHS * 2 > gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS)) fail(`too many distinct characters (${GLYPHS})`);
+
+// ---------- glyph atlas: one texture-array layer per glyph, regular then bold ----------
+function buildAtlas() {
+  const c = document.createElement("canvas");
+  c.width = TILE_W; c.height = TILE_H * GLYPHS * 2;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const family = `"${FONT}", ui-monospace, monospace`;
+  ctx.font = `400 100px ${family}`;
+  const size = GLYPH_SCALE * 100 * (TILE_W - 2) / ctx.measureText("M").width;  // advance fills the tile minus padding
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (let w = 0; w < 2; w++) {
+    ctx.font = `${w ? 700 : 400} ${size}px ${family}`;
+    for (let g = 0; g < GLYPHS; g++) {
+      ctx.fillText(GLYPH_LIST[g], TILE_W / 2, (w * GLYPHS + g) * TILE_H + TILE_H * 0.54);
+    }
+  }
+  const rgba = ctx.getImageData(0, 0, c.width, c.height).data;
+  const a = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < a.length; i++) a[i] = rgba[i * 4 + 3];
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R8, TILE_W, TILE_H, GLYPHS * 2, 0, gl.RED, gl.UNSIGNED_BYTE, a);
+  gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// ---------- text: one glyph index per character, row-major in a 1024-wide texture ----------
+function buildText() {
+  const h = Math.ceil(N / TEXT_W);
+  const bytes = new Uint8Array(TEXT_W * h);
+  for (let i = 0; i < N; i++) bytes[i] = GLYPH_OF.get(CHARS[i]) || 0;
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, TEXT_W, h, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, bytes);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return tex;
+}
+
+// ---------- shaders ----------
+const VS = `#version 300 es
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// The scene: vec3 scene(vec2 cell, vec2 uv) returns linear light for one letter cell, HDR allowed
+// (the light core runs to 4+). uv is page-normalised, y down: row 0 is the first line of the text.
+// Write a new one per subject; see references/scenes.md.
+const PROCEDURAL_SCENE = `
+uniform float uAspect;   // page width / height
+uniform float uTime;
+
+float sq(float x) { return x * x; }   // not pow(x, 2.0): pow of a negative is undefined in GLSL
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+float fbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+  return s;
+}
+
+// smoke that rolls rather than slides: two layers drifting against each other through a slowly turning warp
+float fog(vec2 p, float t) {
+  vec2 w = vec2(fbm(p * 0.7 + vec2(t * 0.06, 0.0)), fbm(p * 0.7 + vec2(3.1, -t * 0.05)));
+  return 0.6 * fbm(p + 1.6 * w + vec2(t * 0.07, 0.0)) + 0.4 * fbm(p * 1.8 + w - vec2(t * 0.12, 0.0));
+}
+
+// the fire's foot, page-normalised (y down), and its height: a great fire in the middle of the page, as John's light is
+const vec2 FIRE = vec2(0.5, 0.86);
+const float HIGH = 0.66;           // root to the tips of the tallest tongues
+const float GROUND = 0.80;         // where the dark land meets the night behind the fire
+const vec3 GOLD = vec3(1.0, 0.70, 0.34);
+const vec3 AMBER = vec3(1.0, 0.46, 0.16);
+const vec3 IVORY = vec3(1.0, 0.92, 0.78);
+
+// how much of a layer whose top edge is at y covers this cell (y down), soft over about a cell
+float cover(float y, float top, float aa) { return smoothstep(top - aa, top + aa, y); }
+
+// sparks: in each column near the fire a few letters loosed from the flame, climbing and drifting until they go out
+float sparks(vec2 cell, float t, float rootRow, float spread) {
+  float s = 0.0;
+  for (int k = -1; k <= 1; k++) {
+    float cx = cell.x + float(k);
+    for (int j = 0; j < 2; j++) {
+      vec2 id = vec2(cx, float(j) * 7.3);
+      float h = hash(id);
+      float near = exp(-sq((cx / uGrid.x - FIRE.x) * uAspect / spread));
+      if (h > 0.10 * near) continue;
+      float life = 4.0 + 5.0 * hash(id + 2.1);
+      float ph = fract(t / life + hash(id + 4.7));
+      float row = rootRow - ph * (0.35 + 0.5 * hash(id + 8.2)) * uGrid.y;
+      float col = cx + 3.0 * sin(t * 0.7 + h * 60.0) * ph;
+      float d = length(vec2(cell.x - col, (cell.y - row) * 0.6));
+      s += exp(-d * d * 3.0) * (1.0 - ph) * (1.0 - ph);
+    }
+  }
+  return s;
+}
+
+// the pile, page-normalised but aspect-true (x = 0 down the fire's middle, y down): each log runs from A (its outer,
+// sawn end) to B, radius R. Two lie crossed behind, two lean in over the heart of the fire, two cross the front, nearest us.
+const vec2 LA[6] = vec2[6](vec2(-0.30, 0.850), vec2(0.30, 0.846), vec2(-0.18, 0.895), vec2(0.19, 0.892), vec2(-0.36, 0.890), vec2(0.34, 0.896));
+const vec2 LB[6] = vec2[6](vec2(0.17, 0.818), vec2(-0.16, 0.815), vec2(0.02, 0.760), vec2(-0.03, 0.765), vec2(0.13, 0.915), vec2(-0.12, 0.921));
+const float LR[6] = float[6](0.022, 0.022, 0.018, 0.018, 0.025, 0.025);
+
+vec2 hash2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
+// how far from the nearest seam between blocks of charcoal: charred wood splits into a grid of checks
+float seam(vec2 x) {
+  vec2 i = floor(x), f = fract(x);
+  float d1 = 8.0, d2 = 8.0;
+  for (int y = -1; y <= 1; y++) for (int k = -1; k <= 1; k++) {
+    vec2 g = vec2(k, y);
+    float d = length(g + hash2(i + g) - f);
+    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  return d2 - d1;
+}
+
+// how close to the heat: the logs and the ground nearest the heart of the fire burn and glow most
+float nearHeat(vec2 p) { return exp(-length(vec2(p.x, (p.y - 0.82) * 1.6)) * 5.0); }
+
+// paint log i over col. Not a tube: its girth swells and pinches along it, its edge is rough with bark, its sawn end
+// shows the rings, and its skin is charcoal split into checks that glow where the fire has hold, ash greying its top.
+// lit: how much firelight falls on it; kindle: how far the fire has taken hold at this spot
+vec3 drawLog(vec3 col, vec2 p, int i, float t, float aa, float lit, float kindle, bool licks) {
+  vec2 a = LA[i], ba = LB[i] - a;
+  float len = length(ba), fi = float(i);
+  vec2 dir = ba / len, n = vec2(-dir.y, dir.x);
+  if (n.y > 0.0) n = -n;                       // n points up the page
+  float u = dot(p - a, dir), v = dot(p - a, n);   // along the log from its sawn end; across it, + towards its top
+  float r = LR[i] * (0.88 + 0.24 * noise(vec2(u * 22.0, fi * 3.0)) + 0.1 * (noise(vec2(u * 160.0, fi)) - 0.5));
+  r *= mix(0.75, 1.0, smoothstep(len, len * 0.7, u));   // the far end burnt thin
+  float d = max(abs(v) - r, max(-u, u - len));
+  float near = nearHeat(p);
+  if (d < aa * 2.0) {
+    float vr = v / r;
+    float bark = fbm(vec2(u * 70.0, vr * 1.4 + fi * 5.0));
+    vec3 wood = vec3(0.040, 0.022, 0.013) * (0.6 + 0.9 * bark) * (0.55 + 0.45 * smoothstep(-1.0, 0.4, vr));   // dark beneath
+    float ash = smoothstep(0.55, 0.72, fbm(vec2(u * 35.0, vr + fi * 9.0))) * smoothstep(0.1, 0.9, vr);
+    wood = mix(wood, vec3(0.16, 0.14, 0.13) * (0.3 + 1.5 * near), ash * 0.7);
+    wood += AMBER * 0.9 * near * lit * smoothstep(-0.2, 0.9, vr);   // the face turned to the flame
+    float s = seam(vec2(u / (r * 1.3), vr * 1.6 + fi * 4.0));
+    float glow = 0.55 + 0.45 * noise(vec2(u * 25.0 + fi * 6.0, t * 0.6));
+    float hot = near * kindle * (0.35 + 0.65 * smoothstep(-0.6, 0.8, vr)) * (1.0 - ash);
+    wood += vec3(1.0, 0.34, 0.07) * 2.6 * smoothstep(0.14, 0.02, s) * glow * hot;
+    // the sawn end, turned a little to us: pale wood in rings, charred at the rim, glowing at the heart if near the fire
+    float e = length(vec2(u / (r * 0.4), v / r));
+    vec3 face = vec3(0.10, 0.065, 0.04) * (0.75 + 0.25 * sin(e * 22.0 + noise(vec2(v * 300.0, fi)) * 3.0));
+    face = mix(face, vec3(0.02, 0.012, 0.008), smoothstep(0.7, 0.95, e));
+    face += vec3(1.0, 0.4, 0.1) * 1.5 * near * kindle * smoothstep(0.5, 0.0, e) * glow;
+    face += AMBER * 0.5 * near * lit;
+    wood = mix(wood, face, smoothstep(1.0, 0.9, e) * step(u, r * 0.4));
+    col = mix(col, wood, max(smoothstep(aa, -aa, d), smoothstep(1.0, 0.9, e) * step(abs(v), r)));
+  }
+  if (licks) {
+    // small flames licking up off its top, taller where the log lies nearer the heart
+    float above = v - r;
+    float lick = (fbm(vec2(u * 40.0 + fi * 7.0, above * 30.0 - t * 2.4)) - 0.35) * 1.8 - above / (0.012 + 0.05 * near);
+    float on = smoothstep(0.0, 0.25, lick) * step(0.0, above) * step(0.03, u) * step(u, len) * kindle;
+    col += mix(AMBER * 0.6, GOLD * 1.6, smoothstep(0.0, 0.8, lick)) * on * (0.5 + near);
+  }
+  return col;
+}
+
+// the pile under column x: where the flame leaves the wood there (the top of the highest lying log, 1.0 where there
+// is none), and how much wood burns under it
+vec2 pileAt(float x) {
+  float top = 1.0, fuel = 0.0;
+  for (int i = 0; i < 6; i++) {
+    vec2 a = LA[i], b = LB[i];
+    float s = (x - a.x) / (b.x - a.x);
+    fuel += smoothstep(-0.02, 0.1, s) * smoothstep(1.02, 0.9, s) * (i == 2 || i == 3 ? 1.5 : 1.0);
+    if (i != 2 && i != 3 && s > 0.0 && s < 1.0) top = min(top, mix(a.y, b.y, s) - LR[i] * length(b - a) / abs(b.x - a.x));
+  }
+  return vec2(top, fuel);
+}
+
+// kindling: thin sticks fallen in among the coals, each burning along its length
+vec3 drawKindling(vec3 col, vec2 p, float t, float aa, float lit, float kindle) {
+  for (int k = 0; k < 9; k++) {
+    float fk = float(k);
+    vec2 c = vec2((hash(vec2(fk, 1.0)) - 0.5) * 0.40, 0.838 + 0.05 * hash(vec2(fk, 2.0)));
+    float ang = (hash(vec2(fk, 3.0)) - 0.5) * 2.4;
+    vec2 dir = vec2(cos(ang), sin(ang));
+    float half_ = 0.025 + 0.035 * hash(vec2(fk, 4.0));
+    vec2 q = p - c;
+    float u = clamp(dot(q, dir), -half_, half_);
+    float d = length(q - dir * u) - 0.0055;
+    float burn = smoothstep(0.3, 0.8, noise(vec2(u * 60.0 + fk * 5.0, t * 0.8)));
+    vec3 stick = vec3(0.05, 0.026, 0.015) + AMBER * 0.4 * lit * nearHeat(p);
+    stick = mix(stick, vec3(1.0, 0.42, 0.1) * 1.8, clamp(burn * kindle * nearHeat(p) * 1.5, 0.0, 1.0));
+    col = mix(col, stick, smoothstep(aa, -aa, d));
+  }
+  return col;
+}
+
+// "cloven tongues like as of fire" (2:3): one great fire burning in the night out of a pile of logs, its tongues licking
+// up and tearing loose, smoke rolling above it lit from below, sparks climbing, and the ground round it lit as far as it reaches.
+vec3 scene(vec2 cell, vec2 uv) {
+  float t = uTime;
+  float aa = 1.0 / uGrid.y;
+  vec2 p = vec2((uv.x - FIRE.x) * uAspect, uv.y);   // aspect-true, x = 0 down the fire's middle
+  float breath = 1.0 + 0.05 * sin(t * 0.6) + 0.03 * sin(t * 1.7);
+
+  // the coming of the fire: a still night over an unlit pile; from 1.5 s a pillar of flame comes down out of the sky,
+  // reaching the wood at LAND; the wood catches from the middle outwards and the fire grows to full by about 13 s,
+  // while the pillar sinks down into it. Reduced motion holds t = 20, long after.
+  const float LAND = 4.5;
+  float head = mix(-0.15, 0.80, smoothstep(1.5, LAND, t));            // the pillar's foot, coming down
+  float tail = mix(-0.25, 0.80, smoothstep(LAND + 0.5, LAND + 4.5, t));   // its top, sinking after it into the fire
+  float grow = smoothstep(LAND, LAND + 8.5, t);
+  float kindle = grow * (2.0 - grow);                               // takes hold fast, then swells slowly to full
+  float reach = 0.48 * smoothstep(LAND, LAND + 5.0, t);             // how far out along the pile the fire has caught
+  float flash = step(LAND, t) * exp(-(t - LAND) * 1.8);              // the moment it strikes the wood
+  // light on the land and the logs: the pillar's own as it nears the ground, then the fire's
+  float lit = max(kindle, 0.7 * smoothstep(0.1, 0.8, head) * (1.0 - smoothstep(0.80, 0.81, tail))) + flash;
+
+  // the night: deep blue overhead, paler toward the hills; stars everywhere the smoke is not.
+  // Bright enough at the top that its letters still show there (references/scenes.md: dark areas at 30-40%)
+  float hz = clamp(uv.y / GROUND, 0.0, 1.0);
+  vec3 col = mix(vec3(0.026, 0.030, 0.080), vec3(0.075, 0.075, 0.140), pow(hz, 3.0));
+  float smoke = fog(vec2(p.x * 2.2, uv.y * 2.6 + t * 0.10), t);
+  // the smoke column: widening as it climbs, leaning a little with the wind
+  float lean = p.x - 0.12 * (FIRE.y - uv.y) * (FIRE.y - uv.y);
+  float column = exp(-sq(lean / (0.12 + 0.6 * (FIRE.y - uv.y)))) * smoothstep(0.86, 0.45, uv.y) * smoothstep(0.0, 0.35, uv.y);
+  float body = smoothstep(0.3, 0.65, smoke) * column;
+  float star = hash(cell);
+  float bright = pow(hash(cell + 3.1), 14.0);
+  col += vec3(0.75, 0.80, 1.0) * step(0.985, star) * (0.10 + 1.4 * bright) * (0.85 + 0.15 * sin(t * (0.5 + star * 2.0) + star * 90.0))
+         * (1.0 - body) * smoothstep(GROUND - 0.02, GROUND - 0.25, uv.y);
+  // the smoke's underside catches the fire: brightest close above it, grey and cool as it climbs away
+  float glowUp = exp(-length(vec2(p.x, (uv.y - FIRE.y + 0.45) * 0.7)) * 2.0);
+  col = mix(col, mix(vec3(0.12, 0.11, 0.14) * (0.4 + 0.6 * kindle), vec3(1.0, 0.42, 0.15) * kindle, glowUp), body * 0.85 * kindle);
+  // and the air round it glows, as the light round John's star does
+  col += vec3(0.45, 0.18, 0.06) * lit * breath * exp(-length(vec2(p.x * 0.8, (uv.y - FIRE.y + 0.25) * 0.9)) * 3.6) * (1.0 - cover(uv.y, GROUND, aa));
+
+  // far off: low hills with a ragged tree line, black against the sky, their crests touched by the firelight
+  float hill = GROUND - 0.01 - 0.10 * smoothstep(0.3, 0.75, fbm(vec2(uv.x * 2.4, 1.7)));
+  float trees = hill - 0.03 * pow(fbm(vec2(uv.x * 30.0, 4.2)), 2.0) * smoothstep(0.35, 0.6, fbm(vec2(uv.x * 4.0, 8.0)));
+  vec3 far = vec3(0.012, 0.012, 0.025) + vec3(0.30, 0.12, 0.05) * lit * exp(-abs(p.x) * 3.0) * exp(-(uv.y - trees) / 0.01);
+  col = mix(col, far, cover(uv.y, trees, aa));
+
+  // the ground: grass and earth running away from us, lit in a wide pool round the fire, dark beyond it
+  float pool = exp(-length(vec2(p.x * 0.7, (uv.y - FIRE.y) * 2.4)) * 3.4);
+  float soil = 0.45 + 0.9 * fbm(vec2(p.x * 10.0 / max(uv.y - GROUND + 0.05, 0.02), uv.y * 60.0));   // held off zero: at 0.75 it blacked out a row
+  vec3 land = vec3(0.020, 0.020, 0.032) * soil + vec3(0.85, 0.38, 0.13) * pool * soil * lit * breath;
+  col = mix(col, land, cover(uv.y, GROUND, aa));
+
+  // the back logs and the kindling, behind the flame
+  // the wood burns only where the fire has reached along the pile
+  float caught = kindle * smoothstep(reach, reach - 0.12, abs(p.x));
+  col = drawLog(col, p, 0, t, aa, lit, caught, false);
+  col = drawLog(col, p, 1, t, aa, lit, caught, false);
+  col = drawKindling(col, p, t, aa, lit, caught);
+
+  // the fire. Every tongue rises out of the wood under it: follow a cell back down the way its tongue leaned (in toward
+  // the middle as it climbs, and swaying) to the column x0 it left the pile from. Its height there is set by how much wood
+  // burns under x0, so the flame is tallest over the heart of the pile, short over the log ends, and absent where there is none.
+  float h0 = max(0.83 - uv.y, 0.0);
+  float x0 = p.x * (1.0 + 1.6 * h0) + (fbm(vec2(uv.y * 4.0 - t * 0.45, 3.1)) - 0.5) * 0.14 * h0;
+  vec2 L = vec2(x0, FIRE.y - uv.y) / HIGH;
+  x0 += (fbm(vec2(L.x * 3.0, L.y * 3.0 - t * 1.1)) - 0.5) * 0.10 * h0;   // tongues bend
+  vec2 pile = pileAt(x0);
+  float h = pile.x - uv.y;                                        // height above the wood it rose from
+  float heat = clamp(pile.y * 0.45, 0.0, 1.0) * exp(-sq(x0 / 0.30));
+  float up = h / (HIGH * (0.12 + 0.88 * heat) * (0.05 + 0.95 * kindle));
+  // stretched tall, so the noise breaks the body into tongues rather than lumps
+  float n = 0.6 * fbm(vec2(L.x * 7.0, L.y * 1.8 - t * 1.3)) + 0.4 * fbm(vec2(L.x * 15.0, L.y * 3.6 - t * 2.3));
+  float f = (n - 0.5) * 2.6 - up * 1.4 + 0.9 + 0.4 * heat;
+  float dense = smoothstep(0.02, 0.2, f) * smoothstep(0.0, 0.015, h + (n - 0.5) * 0.02) * smoothstep(0.05, 0.4, pile.y)
+              * smoothstep(reach, reach - 0.12, abs(x0)) * smoothstep(0.0, 0.08, kindle);
+
+  // heat graded through the body: deep amber at the licking edges, gold within, a white-hot heart low in it
+  // and varied: some tongues burn redder, some yellower, each reddening toward its tip, with a thread of blue where it leaves the wood
+  float hf = smoothstep(0.0, 1.3, f);
+  // the hue drifts at two scales: whole tongues redder or yellower, and smaller patches within them
+  float tint2 = fbm(vec2(L.x * 5.0, L.y * 1.6 - t * 1.4) + 21.0);
+  float tint = mix(fbm(vec2(L.x * 2.5, L.y * 0.8 - t * 0.7) + 11.0), tint2, 0.4);
+  vec3 edge = mix(vec3(1.0, 0.22, 0.05), vec3(1.0, 0.62, 0.18), smoothstep(0.32, 0.68, tint));
+  edge = mix(vec3(0.80, 0.10, 0.04), edge, smoothstep(0.30, 0.50, tint2));
+  vec3 hot = mix(vec3(1.0, 0.42, 0.12), vec3(1.0, 0.88, 0.45), smoothstep(0.35, 0.70, tint2));   // patches of deeper orange and of pale yellow in the body   // here and there a crimson lick
+  edge = mix(edge, vec3(0.85, 0.16, 0.05), smoothstep(0.35, 1.0, up));
+  vec3 core = mix(vec3(1.0, 0.50, 0.16), vec3(1.0, 0.80, 0.36), smoothstep(0.32, 0.68, tint));
+  vec3 flame = mix(edge * 0.8, core * 1.1, hf) * (0.10 + 1.1 * pow(hf, 1.5));   // kept under white, so the hues show
+  // the body is not one glow: thin bright sheets of flame lick up through it, faster than it, with dimmer gaps between
+  float rid = fbm(vec2(L.x * 12.0 + (n - 0.5) * 4.0, L.y * 2.0 - t * 2.6) + 3.0);
+  rid = sq(clamp(1.0 - abs(2.0 * rid - 1.0) * 3.5, 0.0, 1.0));   // fbm sits near 0.5, so stretch it to get real gaps
+  flame *= 0.45 + 1.0 * rid;
+  flame += hot * 0.45 * rid * hf;
+  flame *= mix(1.0, 0.55, smoothstep(0.7, 1.3, up) * (1.0 - hf));   // the tips sooty, dulling as they tear away
+  flame += IVORY * 3.0 * pow(smoothstep(1.1, 1.8, f), 2.0);
+  flame += vec3(0.15, 0.30, 1.0) * 0.6 * heat * smoothstep(0.03, 0.005, h) * step(0.0, h);
+  col += GOLD * 0.25 * (kindle + flash) * exp(-abs(p.x) * 3.5) * smoothstep(1.1, 0.0, (0.83 - uv.y) / HIGH) * step(uv.y, 0.86);   // glow round it
+  col += flame * breath * (0.6 + 0.4 * kindle) * dense;   // flame is light: added, so its thin edges show what is behind
+
+  // the coals under it: a bed of embers breathing on their own, glowing up between the logs
+  float bed = exp(-sq(p.x / 0.30) - sq((uv.y - 0.855 - 0.010 * fbm(vec2(p.x * 9.0, 2.0))) / 0.014));
+  float coal = noise(vec2(cell.x * 0.35, cell.y * 0.5) + vec2(t * 0.3, 0.0)) * noise(vec2(cell.x * 0.11, t * 0.4 + 5.0));
+  col += vec3(1.0, 0.45, 0.12) * bed * (0.6 + 2.4 * coal) * caught;
+
+  // the leaning logs stand in the flame, the front ones across its foot
+  for (int i = 2; i < 6; i++) col = drawLog(col, p, i, t, aa, lit, caught, i >= 4);
+
+  // the pillar of fire: a whirl of flame coming down out of the sky, a funnel wide above and narrowing to its foot, the
+  // hot root. Nothing in it is steady: it whips and bulges, spins faster in some lengths than others so its spiral bands
+  // shear and tangle, climbs as fire does (the noise rises against its fall), flings shreds of flame off its edges and
+  // embers round it, and flickers. It lights the night as it nears the ground, and sinks into the fire once the wood is alight.
+  float gone = 1.0 - smoothstep(LAND + 3.5, LAND + 4.5, t);   // nothing left of it once it has sunk in
+  float span = smoothstep(tail - 0.02, tail + 0.12, uv.y) * step(uv.y, head + 0.03) * gone;
+  if (span > 0.0) {
+    float d = head - uv.y;   // height above its foot
+    float hold = smoothstep(0.0, 0.4, d);   // the foot held, the rest free
+    float cx = ((fbm(vec2(uv.y * 2.0 + t * 1.1, 7.0)) - 0.5) * 0.16 + (fbm(vec2(uv.y * 7.0 - t * 2.6, 9.0)) - 0.5) * 0.05) * hold;   // it whips
+    float w = mix(0.025, 0.12, smoothstep(0.0, 0.8, d)) * (0.7 + 0.6 * fbm(vec2(uv.y * 5.0 + t * 1.7, 2.0)));   // and bulges
+    float s = (p.x - cx) / w;   // across the column, -1..1
+    float spin = t * 7.0 + 4.0 * fbm(vec2(uv.y * 1.5, t * 0.5 + 3.0));   // faster in some lengths: the bands shear
+    float ang = asin(clamp(s, -1.0, 1.0)) + spin;
+    float b = ang - uv.y * (16.0 + 12.0 * (fbm(vec2(uv.y * 2.5, t * 0.3)) - 0.5));   // along a spiral band, its twist uneven
+    b += (fbm(vec2(b * 0.7, uv.y * 4.0 + t * 2.0)) - 0.5) * 2.5;   // and tangled
+    float n = 0.6 * fbm(vec2(b * 1.6, uv.y * 3.0 + t * 1.8)) + 0.4 * fbm(vec2(b * 3.4 + s * 2.0, uv.y * 7.0 + t * 3.0));
+    float face = sqrt(max(1.0 - s * s, 0.0));   // the near side of the whirl, full; its limbs, edge-on
+    float root = exp(-max(d, 0.0) / 0.05);   // the foot burns hottest
+    // at its edges the noise grows, so shreds of flame tear off and are flung outward and up
+    float shred = fbm(vec2(s * 3.0 - sign(s) * t * 3.5, uv.y * 9.0 + t * 4.0) + 5.0);
+    float rim = smoothstep(0.5, 1.4, abs(s));
+    float f = 0.55 * (1.0 - s * s) + 0.35 * face + (n - 0.5) * 2.4 + rim * (shred - 0.45) * 2.2
+            - 0.05 - 0.35 * smoothstep(0.0, 0.8, d) + 0.6 * root;
+    float foot = smoothstep(0.0, 0.035, d + (n - 0.5) * 0.06);   // the foot ragged, not a rounded drop
+    float haze = smoothstep(-0.5, 0.0, f) * foot;
+    f *= foot;
+    float dense = smoothstep(0.0, 0.3, f) * span;   // soft edges: breath, not a skin
+    float hf = smoothstep(0.0, 1.3, f);
+    float tint = fbm(vec2(b * 0.8, uv.y * 1.2 + t * 0.7) + 11.0);
+    vec3 edge = mix(vec3(1.0, 0.22, 0.05), vec3(1.0, 0.62, 0.18), smoothstep(0.32, 0.68, tint));
+    vec3 core = mix(vec3(1.0, 0.50, 0.16), vec3(1.0, 0.80, 0.36), smoothstep(0.32, 0.68, tint));
+    vec3 flame = mix(edge * 0.7, core * 1.1, hf) * (0.10 + 1.1 * pow(hf, 1.5));
+    flame += IVORY * 2.5 * pow(smoothstep(1.0, 1.6, f), 2.0) * root;   // white only low, at the root
+    float flicker = 0.8 + 0.4 * noise(vec2(t * 9.0, uv.y * 4.0));
+    col += flame * dense * flicker;
+    col += AMBER * 0.10 * haze * span;   // the heat-haze round it
+    // embers whirled round it, each on its own orbit: its own radius, speed, climb and life, so they never move as one.
+    // Each is placed in this cell's frame of the column (its axis and width here), dims as it swings behind, and is
+    // smeared along the way it is going: a streak across the face, a point at the edges where it turns
+    float embers = 0.0;
+    for (int k = 0; k < 8; k++) {
+      float id = float(k) * 1.37;
+      float life = 1.2 + 1.6 * hash(vec2(id, 1.0));
+      float age = fract(t / life + hash(vec2(id, 2.0)));
+      float climb = 0.25 + 0.45 * hash(vec2(id, 3.0));
+      float ey = head - 0.03 - age * climb;                                  // climbing off the foot
+      float r = 0.9 + 1.6 * hash(vec2(id, 4.0));                             // in column widths
+      float om = (5.0 + 5.0 * hash(vec2(id, 6.0))) / r;                      // the outer ones slower
+      float th = hash(vec2(id, 5.0)) * 6.28 + t * om;
+      float cxs = uGrid.x / uAspect;   // p.x to columns
+      vec2 off = vec2((p.x - cx - r * w * sin(th)) * cxs, (uv.y - ey) * uGrid.y / 0.6);   // in column widths, round on screen
+      vec2 vel = vec2(r * w * cos(th) * om * cxs, -climb / life * uGrid.y / 0.6);
+      float len = 0.03 * length(vel) + 0.5;                                  // how far it moves while seen
+      vec2 dir = normalize(vel);
+      float along = dot(off, dir), across = dot(off, vec2(-dir.y, dir.x));
+      float size = 0.5 + 0.8 * hash(vec2(id, 8.0));
+      float dot = exp(-sq(across / size) - sq(along / (len * size)));
+      float behind = cos(th) < 0.0 && abs(r * sin(th)) < 1.0 ? 0.2 : 1.0;
+      embers += dot * behind * sin(age * 3.14159) * (0.4 + 0.6 * hash(vec2(id, 7.0))) * (0.7 + 0.3 * sin(t * 23.0 + id * 9.0));
+    }
+    col += mix(AMBER, IVORY, 0.35) * embers * 1.6 * foot * span;
+  }
+  col += GOLD * 0.35 * exp(-abs(p.x) / 0.07) * smoothstep(tail - 0.05, tail + 0.1, uv.y) * smoothstep(head + 0.06, head - 0.02, uv.y) * gone;
+  col += IVORY * 1.5 * flash * exp(-length(vec2(p.x, (uv.y - 0.82) * 1.5)) * 9.0);
+
+  col += AMBER * 1.6 * sparks(cell, t, 0.82 * uGrid.y, 0.22) * kindle * smoothstep(LAND + 1.0, LAND + 4.0, t);
+  return col;
+}`;
+
+// A picture as the scene: cover-fit to the page, and lifted by the inverse of the tone map below,
+// so it comes out as itself and its highlights still feed the bloom.
+const IMAGE_SCENE = `
+uniform sampler2D uImage;
+uniform vec2 uCover;     // image uv scale for a cover fit
+vec3 scene(vec2 cell, vec2 uv) {
+  vec3 c = texture(uImage, (uv - 0.5) * uCover + 0.5).rgb;
+  float m = min(max(c.r, max(c.g, c.b)), 0.985);
+  return c * (-log(1.0 - m) / 1.8) / max(m, 1e-4);
+}`;
+
+// Pass 1: the scene, one texel per letter cell, plus its bright part for the bloom.
+const sceneFS = body => `#version 300 es
+precision highp float;
+uniform vec2 uGrid;      // cols, rows
+layout(location = 0) out vec4 o;
+layout(location = 1) out vec4 bright;   // only the bright part, mipmapped into bloom
+${body}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  vec3 col = scene(cell, (cell + 0.5) / uGrid);
+  // soft tone map on the brightest channel, so bright colour stays colour instead of washing to white
+  float m = max(col.r, max(col.g, col.b));
+  float mapped = 1.0 - exp(-m * 1.8);
+  col *= mapped / max(m, 1e-4);
+  col = mix(col, vec3(mapped), smoothstep(1.2, 5.0, m));   // white-hot: the hottest light loses its colour
+  o = vec4(col, 1.0);
+  bright = vec4(col * smoothstep(0.45, 0.9, mapped), 1.0);
+}`;
+
+// Pass 2: letters. Each screen pixel finds its cell, its character, and the scene colour of that cell.
+const LETTER_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+precision mediump sampler2DArray;
+uniform usampler2D uText;
+uniform sampler2D uScene;
+uniform sampler2D uBloom;
+uniform sampler2DArray uAtlas;
+uniform vec2 uRes;       // device px
+uniform vec2 uOrigin;    // page top-left, device px, y down
+uniform vec2 uCell;      // cell size, device px
+uniform vec2 uGrid;
+uniform int uN;
+uniform float uGain;
+out vec4 o;
+
+// past 1.0 a colour runs to white instead of clipping, so overexposed light reads hot, not flat
+vec3 shoulder(vec3 c) {
+  float m = max(c.r, max(c.g, c.b));
+  return mix(c / max(m, 1.0), vec3(1.0), clamp((m - 1.0) * 0.5, 0.0, 0.85));
+}
+
+void main() {
+  vec2 fc = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 cf = (fc - uOrigin) / uCell;
+  // derivatives before any early return: a quad with a returned pixel gives garbage gradients,
+  // which pick a coarse mip and draw faint bars along cell edges
+  vec2 dx = dFdx(cf), dy = dFdy(cf);
+  o = vec4(0.0, 0.0, 0.0, 1.0);
+  if (cf.x < 0.0 || cf.y < 0.0 || cf.x >= uGrid.x || cf.y >= uGrid.y) return;
+  ivec2 cell = ivec2(cf);
+  int idx = cell.y * int(uGrid.x) + cell.x;
+  if (idx >= uN) return;
+  uint code = texelFetch(uText, ivec2(idx % ${TEXT_W}, idx / ${TEXT_W}), 0).r;
+  // everything reads the scene filtered across cells, so colour, fill and weight blend with no cell steps
+  vec2 uv = cf / uGrid;
+  vec3 scene = texture(uScene, uv).rgb;
+  float lum = dot(scene, vec3(0.2126, 0.7152, 0.0722));
+  float peak = max(scene.r, max(scene.g, scene.b));
+  // background: black in the dark, the scene itself where it is bright (a sun reads nearly solid)
+  // bloom: the bright part blurred at several radii, so light spills past its edge onto the dark and the letters
+  vec3 bloom = 0.4 * textureLod(uBloom, uv, 1.5).rgb + 0.6 * textureLod(uBloom, uv, 3.0).rgb
+             + 0.8 * textureLod(uBloom, uv, 4.5).rgb + 1.0 * textureLod(uBloom, uv, 6.0).rgb;
+  vec3 bg = shoulder(scene * smoothstep(0.04, 0.7, lum) + bloom * 0.5);
+  o = vec4(bg, 1.0);                         // spaces show the background, so words sit in light, not holes
+  if (code == 0u) return;
+
+  // gradients of the continuous cell coordinate keep mip selection stable across cell edges
+  vec2 g = fract(cf);
+  float layer = float(code - 1u);
+  float reg  = textureGrad(uAtlas, vec3(g, layer), dx, dy).r;
+  float bold = textureGrad(uAtlas, vec3(g, layer + ${GLYPHS}.0), dx, dy).r;
+  float cov = mix(reg, bold, smoothstep(0.08, 0.4, lum));    // hotter light, heavier letter
+
+  // ink: the scene lifted, with a floor in the scene's own hue so letters stay readable in the dark
+  vec3 ink = shoulder(scene * uGain + 0.24 * scene / max(peak, 0.03) + bloom);
+  vec3 lit = 1.0 - (1.0 - bg) * (1.0 - ink);                 // screen over the background: bright letters on bright fill stay faint
+  o = vec4(mix(bg, lit, cov), 1.0);
+}`;
+
+function compile(fsSrc) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fsSrc]]) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) {
+    const name = gl.getActiveUniform(p, i).name;
+    u[name] = gl.getUniformLocation(p, name);
+  }
+  return { p, u };
+}
+
+const sceneProg = compile(sceneFS(SCENE_SRC ? IMAGE_SCENE : PROCEDURAL_SCENE));
+const letterProg = compile(LETTER_FS);
+const textTex = buildText();
+let atlasTex = null;
+gl.bindVertexArray(gl.createVertexArray());
+
+// ---------- picture scene: an image or a looping video ----------
+let media = null, mediaTex = null, mediaUploaded = false, notice = "";
+if (SCENE_SRC) {
+  media = document.createElement(IS_VIDEO ? "video" : "img");
+  if (IS_VIDEO) Object.assign(media, { muted: true, loop: true, playsInline: true, autoplay: true });
+  media.src = SCENE_SRC;
+  media.onerror = () => { notice = `could not load ${SCENE_SRC}`; };
+  mediaTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);  // a big picture shrinks to a few hundred cells
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+const mediaSize = () => IS_VIDEO ? [media.videoWidth, media.videoHeight] : [media.naturalWidth, media.naturalHeight];
+const mediaReady = () => IS_VIDEO ? media.readyState >= 2 : media.complete && media.naturalWidth > 0;
+
+function uploadMedia() {
+  if (!media || !mediaReady() || (mediaUploaded && !IS_VIDEO)) return;
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  try {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, media);
+  } catch (e) {
+    // file:// pictures are cross-origin to WebGL; serve the folder instead
+    media = null;
+    fail("picture blocked: serve this folder (python3 -m http.server) instead of opening the file");
+  }
+  gl.generateMipmap(gl.TEXTURE_2D);
+  mediaUploaded = true;
+}
+
+// ---------- layout: the whole text exactly once at zoom 1 ----------
+const lay = {};      // cols, rows, fitCell (CSS px cell height at zoom 1)
+const view = { zoom: 1, ox: 0, oy: 0 };   // page top-left in CSS px
+// what the reader chose: the letter at screen centre and the cell size (null = fitted). Only zoom and pan change it,
+// so any run of resizes (an animated F11) lands on the same view
+const want = { anchor: 0, cell: null };
+let sceneTex = null, bloomTex = null, sceneFbo = null;
+
+// reflow = false keeps the columns, so the text does not reshuffle on every step of a window animation
+function fit(reflow = true) {
+  const W = innerWidth, H = innerHeight;
+  const cols = reflow || !lay.cols ? Math.max(1, Math.round(Math.sqrt(N * W / (H * CELL_ASPECT)))) : lay.cols;
+  const rows = Math.ceil(N / cols);
+  const regrid = cols !== lay.cols;
+  Object.assign(lay, { cols, rows, fitCell: Math.min(W / (cols * CELL_ASPECT), H / rows) });
+
+  const dpr = Math.min(devicePixelRatio || 1, 1.5);   // weak GPUs hang at full high-DPI resolution
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  view.zoom = want.cell ? Math.min(maxZoom(), Math.max(1, want.cell / lay.fitCell)) : 1;
+  centreOn(want.anchor);
+  if (!regrid) return;
+
+  for (const t of [sceneTex, bloomTex]) if (t) gl.deleteTexture(t);
+  [sceneTex, bloomTex] = [gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR].map(minFilter => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);   // filtered across cells, so the picture has no cell steps
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  });
+  sceneFbo = sceneFbo || gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTex, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, bloomTex, 0);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// after the reader zooms or pans: remember the centre letter and the cell size
+let urlTimer = 0;
+function remember() {
+  const c = Math.floor((innerWidth / 2 - view.ox) / (cellH() * CELL_ASPECT)), r = Math.floor((innerHeight / 2 - view.oy) / cellH());
+  want.anchor = Math.min(N - 1, Math.max(0, r * lay.cols + Math.min(lay.cols - 1, Math.max(0, c))));
+  want.cell = view.zoom > 1 ? cellH() : null;
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(shareUrl, 300);
+}
+
+// the address bar always holds the current view, so it can be copied and shared
+function shareUrl() {
+  const q = new URLSearchParams(location.search);
+  q.delete("out");   // the pull-back plays once, not on a reload of this URL
+  const m = markAt(innerWidth / 2, innerHeight / 2);
+  if (view.zoom > 1.05 && m) { q.set("zoom", view.zoom.toFixed(1)); q.set("at", m[1]); }
+  else { q.delete("zoom"); q.delete("at"); }
+  const s = q.toString().replace(/%3A/g, ":");   // keep 5:14 readable in the address bar
+  history.replaceState(null, "", s ? `?${s}` : location.pathname);
+}
+
+function centreOn(index) {
+  const [c, r] = cellOf(Math.min(N - 1, Math.max(0, index)));
+  view.ox = innerWidth / 2 - (c + 0.5) * cellH() * CELL_ASPECT;
+  view.oy = innerHeight / 2 - (r + 0.5) * cellH();
+  clampView();
+}
+const maxZoom = () => Math.max(1, MAX_CELL_CSS / lay.fitCell);
+
+const cellH = () => lay.fitCell * view.zoom;
+const pageW = () => lay.cols * cellH() * CELL_ASPECT;
+const pageH = () => lay.rows * cellH();
+
+function clampView() {
+  for (const [k, page, screen] of [["ox", pageW(), innerWidth], ["oy", pageH(), innerHeight]]) {
+    view[k] = page <= screen ? (screen - page) / 2 : Math.min(0, Math.max(screen - page, view[k]));
+  }
+}
+
+function zoomAt(mx, my, factor) {
+  const z = Math.min(maxZoom(), Math.max(1, view.zoom * factor));
+  const k = z / view.zoom;
+  view.ox = mx - (mx - view.ox) * k;
+  view.oy = my - (my - view.oy) * k;
+  view.zoom = z;
+  clampView();
+  remember();
+}
+
+// a mark key ("8:12", "3") or a plain character offset
+function offsetOf(at) {
+  const m = MARKS.find(e => e[1] === at);
+  return m ? m[0] : Math.max(0, Math.min(N - 1, Number(at) || 0));
+}
+
+function cellOf(index) { return [index % lay.cols, Math.floor(index / lay.cols)]; }
+
+// letters (characters, spaces included, like the zoom-1 total) whose cells touch the screen
+function visibleLetters() {
+  const cw = cellH() * CELL_ASPECT, chh = cellH();
+  const c0 = Math.max(0, Math.floor(-view.ox / cw)), c1 = Math.min(lay.cols, Math.ceil((innerWidth - view.ox) / cw));
+  const r0 = Math.max(0, Math.floor(-view.oy / chh)), r1 = Math.min(lay.rows, Math.ceil((innerHeight - view.oy) / chh));
+  if (c1 <= c0 || r1 <= r0) return 0;
+  const lastLen = N - (lay.rows - 1) * lay.cols;           // the last row is only partly filled
+  return (r1 - r0) * (c1 - c0) - (r1 === lay.rows ? Math.max(0, c1 - Math.max(c0, lastLen)) : 0);
+}
+
+// the mark (verse, paragraph) under a screen point
+function markAt(mx, my) {
+  const c = Math.floor((mx - view.ox) / (cellH() * CELL_ASPECT));
+  const r = Math.floor((my - view.oy) / cellH());
+  if (!MARKS.length || c < 0 || r < 0 || c >= lay.cols || r >= lay.rows) return null;
+  const i = r * lay.cols + c;
+  if (i >= N || i < MARKS[0][0]) return null;
+  let lo = 0, hi = MARKS.length - 1;     // last mark starting at or before i
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (MARKS[m][0] <= i) lo = m; else hi = m - 1; }
+  return MARKS[lo];
+}
+
+// ---------- input ----------
+let mouse = null, drag = null;
+const touches = new Map();   // pointerId -> [x, y]; two at once is a pinch
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015)));
+}, { passive: false });
+const startDrag = (x, y) => { drag = { x, y, ox: view.ox, oy: view.oy }; };
+canvas.addEventListener("pointerdown", e => {
+  touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (touches.size === 1) startDrag(e.clientX, e.clientY); else drag = null;
+  canvas.setPointerCapture(e.pointerId); canvas.classList.add("dragging");
+});
+canvas.addEventListener("pointermove", e => {
+  mouse = [e.clientX, e.clientY];
+  if (touches.size === 2 && touches.has(e.pointerId)) {
+    // pinch: pan with the midpoint, zoom by the change in finger distance, about the midpoint
+    const [a, b] = [...touches.values()];
+    const d0 = Math.hypot(a[0] - b[0], a[1] - b[1]), m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    const [c, d] = [...touches.values()];
+    const d1 = Math.hypot(c[0] - d[0], c[1] - d[1]), m1 = [(c[0] + d[0]) / 2, (c[1] + d[1]) / 2];
+    view.ox += m1[0] - m0[0]; view.oy += m1[1] - m0[1];
+    zoomAt(m1[0], m1[1], d0 > 0 ? d1 / d0 : 1);
+    return;
+  }
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (drag) { view.ox = drag.ox + e.clientX - drag.x; view.oy = drag.oy + e.clientY - drag.y; clampView(); remember(); }
+});
+const endDrag = e => {
+  touches.delete(e.pointerId);
+  if (touches.size === 1) { const [p] = touches.values(); startDrag(...p); return; }   // a pinch ending in one finger keeps panning
+  drag = null; canvas.classList.remove("dragging");
+};
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+canvas.addEventListener("pointerleave", () => { if (!drag) mouse = null; });
+let settle = 0;
+addEventListener("resize", () => { fit(false); clearTimeout(settle); settle = setTimeout(fit, 150); });
+
+// after the home page's push-in (?out=1): hold on the verse, then glide back out to the whole picture; any input stops it
+const HOLD_MS = 4000, PULL_MS = 3500;
+let holdTimer = 0, glide = 0;
+const stopPull = () => { clearTimeout(holdTimer); cancelAnimationFrame(glide); };
+for (const type of ["wheel", "pointerdown"]) canvas.addEventListener(type, stopPull);
+addEventListener("resize", stopPull);
+function pullBack(index) {
+  holdTimer = setTimeout(() => {
+    const [c, r] = cellOf(index), tx = c + 0.5, ty = r + 0.5, A = CELL_ASPECT;
+    const z = view.zoom, xs = view.ox + tx * cellH() * A, ys = view.oy + ty * cellH();
+    view.zoom = 1; clampView();   // where the verse sits in the whole picture
+    const xe = view.ox + tx * cellH() * A, ye = view.oy + ty * cellH();
+    const start = performance.now();
+    // the push-in in reverse: zoom shrinks evenly in log space while the verse glides back to its place
+    (function step(now) {
+      const s = Math.min(1, (now - start) / PULL_MS), e = s * s * s * (s * (s * 6 - 15) + 10);
+      view.zoom = Math.pow(z, 1 - e);
+      view.ox = xs + (xe - xs) * e - tx * cellH() * A;
+      view.oy = ys + (ye - ys) * e - ty * cellH();
+      clampView(); remember();
+      if (s < 1) glide = requestAnimationFrame(step);
+    })(start);
+  }, HOLD_MS);
+}
+
+// ---------- frame ----------
+const lightIndex = PIECE.light ?? null;   // the procedural light sits on this letter; page centre if unset
+let t0 = 0, frames = 0;
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+
+function frame(now) {
+  if (lost) return;
+  // ?t= starts the clock later, for screenshots; reduced motion holds one moment with the light already risen
+  const t = still.matches ? 20 : (now - t0) / 1000 + (Number(params.get("t")) || 0);
+  const [lc, lr] = lightIndex === null ? [lay.cols / 2 - 0.5, lay.rows / 2 - 0.5] : cellOf(lightIndex);
+  uploadMedia();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+  gl.viewport(0, 0, lay.cols, lay.rows);
+  gl.useProgram(sceneProg.p);
+  const su = name => sceneProg.u[name] ?? null;   // each scene uses its own subset of uniforms
+  gl.uniform2f(su("uGrid"), lay.cols, lay.rows);
+  gl.uniform1f(su("uAspect"), lay.cols * CELL_ASPECT / lay.rows);
+  gl.uniform2f(su("uLight"), (lc + 0.5) / lay.cols, (lr + 0.5) / lay.rows);
+  gl.uniform1f(su("uTime"), t);
+  if (media) {
+    const [w, h] = mediaSize(), page = lay.cols * CELL_ASPECT / lay.rows, pic = w / h || page;
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+    gl.uniform1i(su("uImage"), 4);
+    gl.uniform2f(su("uCover"), Math.min(1, page / pic), Math.min(1, pic / page));
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  if (!media || mediaUploaded) gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const dpr = canvas.width / innerWidth;
+  const ch = cellH() * dpr;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(letterProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textTex);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D_ARRAY, atlasTex);
+  gl.uniform1i(letterProg.u.uText, 0);
+  gl.uniform1i(letterProg.u.uScene, 1);
+  gl.uniform1i(letterProg.u.uAtlas, 2);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+  gl.uniform1i(letterProg.u.uBloom, 3);
+  gl.uniform2f(letterProg.u.uRes, canvas.width, canvas.height);
+  gl.uniform2f(letterProg.u.uOrigin, view.ox * dpr, view.oy * dpr);
+  gl.uniform2f(letterProg.u.uCell, ch * CELL_ASPECT, ch);
+  gl.uniform2f(letterProg.u.uGrid, lay.cols, lay.rows);
+  gl.uniform1i(letterProg.u.uN, N);
+  // small letters average out to thin coverage; lift them so the picture holds when zoomed out
+  const s = Math.min(1, Math.max(0, (cellH() - 6) / 24));
+  gl.uniform1f(letterProg.u.uGain, 2.3 + (1.1 - 2.3) * s * s * (3 - 2 * s));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // the place under the cursor, or at screen centre when the cursor is away
+  const m = markAt(...(mouse || [innerWidth / 2, innerHeight / 2]));
+  const place = notice || (m ? m[2] : "");
+  const count = `${visibleLetters().toLocaleString("en-US")}`;
+  if (hud.place.textContent !== place) {
+    hud.place.textContent = place;
+    hud.place.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 240, easing: "ease-out" });   // soft change, not a flicker
+  }
+  if (hud.count.textContent !== count) hud.count.textContent = count;
+  frames++;
+  requestAnimationFrame(frame);
+}
+
+// for scripts/check.mjs: the state a resize or fps check needs to read
+window.letterLight = () => ({ W: innerWidth, H: innerHeight, cols: lay.cols, rows: lay.rows, zoom: +view.zoom.toFixed(3),
+  cellH: +cellH().toFixed(2), place: hud.place.textContent, letters: visibleLetters(), frames, font: FONT, glyphs: GLYPHS });
+
+// the atlas needs the glyph font loaded first; a web font in a later fallback would otherwise draw as a system font
+Promise.all([400, 700].map(w => document.fonts.load(`${w} 40px "${FONT}"`, GLYPH_LIST.join("")))).catch(() => {}).then(() => {
+  atlasTex = buildAtlas();
+  t0 = performance.now();
+  fit();
+  // ?zoom=12&at=3:16 opens zoomed in on a mark (or a character offset), for screenshots and links
+  if (params.has("zoom")) {
+    zoomAt(0, 0, Number(params.get("zoom")));
+    centreOn(offsetOf(params.get("at") || ""));
+    remember();
+    if (params.has("out")) pullBack(offsetOf(params.get("at") || ""));
+  }
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

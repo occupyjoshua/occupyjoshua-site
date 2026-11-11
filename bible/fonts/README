@@ -1,0 +1,7 @@
+Nimbus Mono PS, Regular and Bold, from the URW base35 fonts
+(https://github.com/ArtifexSoftware/urw-base35-fonts), converted to woff2 with
+woff2_compress from the Arch gsfonts package.
+
+License: AGPL-3.0-only WITH PS-or-PDF-font-exception-20170817
+(Copyright (URW)++ Design & Development). The full license text is in the
+upstream repository's LICENSE and COPYING files.

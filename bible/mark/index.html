@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mark, in Letters</title>
+<meta name="description" content="The whole Gospel of Mark, every letter of it, lit as one picture: the storm on the sea, and the great calm. Zoom in to read.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Mark, in Letters">
+<meta property="og:description" content="The whole Gospel of Mark, every letter of it, lit as one picture: the storm on the sea, and the great calm. Zoom in to read.">
+<!-- shortcut: relative og:image, which some link scrapers ignore; make it absolute once the domain is chosen -->
+<meta property="og:image" content="poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='24' font-size='24' text-anchor='middle' fill='%23e6d8b8'%3E%E2%9D%A7%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/NimbusMonoPS-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/NimbusMonoPS-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  /* the atlas font ships with the site, so every OS draws the same letters (URW, AGPL-3.0; see fonts/README) */
+  @font-face { font-family: "Nimbus Mono PS"; font-weight: 400; src: url(../fonts/NimbusMonoPS-Regular.woff2) format("woff2"); }
+  @font-face { font-family: "Nimbus Mono PS"; font-weight: 700; src: url(../fonts/NimbusMonoPS-Bold.woff2) format("woff2"); }
+  :root { --ink: #e6d8b8; --dim: #a39579; --rule: #e6d8b8a0; --bg: #000; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+  /* the HUD is set like a printed page: a running head above, the place in the text below */
+  .hud { position: fixed; font: 400 15px/1 "EB Garamond", "P052", Palatino, Georgia, serif;
+         color: var(--ink); pointer-events: none; user-select: none; white-space: pre;
+         text-shadow: 0 0 6px #000, 0 0 12px #000; }
+  /* running head centred in spaced small capitals, over a fleuron between two hairlines */
+  #head { top: 14px; left: 50%; transform: translateX(-50%); padding-left: 0.26em; font-variant: all-small-caps;
+          letter-spacing: 0.26em; font-size: 15px; }
+  #mark { top: 33px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+          color: var(--ink); font-size: 14px; }
+  #mark i { width: 96px; height: 1px; background: linear-gradient(90deg, #0000, var(--rule)); box-shadow: 0 0 5px #000; }
+  #mark i:last-child { background: linear-gradient(90deg, var(--rule), #0000); }
+  #place { bottom: 14px; left: 20px; padding-bottom: 4px; border-bottom: 1px solid var(--rule); font-size: 19px;
+           font-style: italic; font-variant-numeric: oldstyle-nums; }
+  /* tabular figures, so the count does not shift sideways while it changes */
+  #count { bottom: 18px; right: 20px; color: var(--dim); font-size: 15px; font-variant-numeric: oldstyle-nums tabular-nums; }
+  #count:not(:empty)::after { content: " letters"; font-variant: all-small-caps; letter-spacing: 0.08em; }
+  /* dark margins top and bottom, so the HUD reads over bright light */
+  .margin { position: fixed; left: 0; right: 0; height: 64px; pointer-events: none; }
+  .margin.top { top: 0; background: linear-gradient(#000c, #0000); }
+  .margin.bottom { bottom: 0; background: linear-gradient(#0000, #000c); }
+  @media (max-width: 600px) { #mark i { width: 40px; } }
+  /* the text itself, for screen readers and search; the canvas is only a picture of it */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .poster { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="The Gospel of Mark, its letters lit by a storm at night on the sea: a small boat in the waves and lightning, until one figure stands and stretches out his arm, and the sea goes still under the moon: Peace, be still"></canvas>
+<article class="sr-only" id="text" aria-label="The Gospel According to St Mark"></article>
+<div class="margin top"></div><div class="margin bottom"></div>
+<div class="hud" id="head"></div>
+<div class="hud" id="place"></div>
+<div class="hud" id="mark"><i></i>&#x2767;<i></i></div>
+<div class="hud" id="count"></div>
+<script src="text-data.js"></script>
+<script>
+"use strict";
+// PIECE comes from text-data.js (scripts/build_text.py): { title, text, marks: [[offset, key, label]], light, scene, font }
+const params = new URLSearchParams(location.search);
+const CHARS = Array.from(PIECE.text);   // by code point, so offsets match Python's
+const N = CHARS.length;
+const CELL_ASPECT = 0.6;          // cell width / height; glyph tiles are 36x60
+const TILE_W = 36, TILE_H = 60;
+const TEXT_W = 1024;              // text texture row width
+const MAX_CELL_CSS = 72;          // deepest zoom: cell height in CSS px
+const FONT = params.get("font") || PIECE.font || "Nimbus Mono PS";
+const GLYPH_SCALE = Number(params.get("scale")) || 0.95;  // < 1 leaves more space around each letter
+const SCENE_SRC = params.get("scene") || PIECE.scene || "";  // empty: the procedural scene below; else an image or video
+const IS_VIDEO = /\.(mp4|webm|mov|m4v|ogv)$/i.test(SCENE_SRC);
+const MARKS = PIECE.marks || [];
+
+// glyph table from the text itself: index 0 is blank, 1.. are the distinct characters
+const GLYPH_LIST = [...new Set(CHARS)].filter(ch => ch.trim()).sort();
+const GLYPHS = GLYPH_LIST.length;
+const GLYPH_OF = new Map(GLYPH_LIST.map((ch, i) => [ch, i + 1]));
+
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+const hud = { head: document.getElementById("head"), place: document.getElementById("place"), count: document.getElementById("count") };
+hud.head.textContent = PIECE.title || "";
+document.getElementById("text").textContent = PIECE.text;
+function fail(msg) { hud.place.textContent = msg; throw new Error(msg); }
+// a still of the piece instead of a black or frozen page
+function showStill(msg) {
+  canvas.replaceWith(Object.assign(document.createElement("img"), { src: "poster.jpg", alt: canvas.getAttribute("aria-label"), className: "poster" }));
+  hud.place.textContent = msg;
+}
+if (!gl) {
+  showStill("A still: this browser has WebGL2 turned off.\nRestart it, turn on hardware acceleration,\nor update it to see the scene move.");
+  throw new Error("no webgl2");
+}
+// a GPU reset (often the frame taking too long on a weak card) loses the context; Chrome then blocks WebGL here until a restart
+let lost = false;
+canvas.addEventListener("webglcontextlost", () => { lost = true; showStill("A still: the graphics card stopped drawing.\nRestart the browser to see the scene move."); });
+if (GLYPHS > 255 || GLYPHS * 2 > gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS)) fail(`too many distinct characters (${GLYPHS})`);
+
+// ---------- glyph atlas: one texture-array layer per glyph, regular then bold ----------
+function buildAtlas() {
+  const c = document.createElement("canvas");
+  c.width = TILE_W; c.height = TILE_H * GLYPHS * 2;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const family = `"${FONT}", ui-monospace, monospace`;
+  ctx.font = `400 100px ${family}`;
+  const size = GLYPH_SCALE * 100 * (TILE_W - 2) / ctx.measureText("M").width;  // advance fills the tile minus padding
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (let w = 0; w < 2; w++) {
+    ctx.font = `${w ? 700 : 400} ${size}px ${family}`;
+    for (let g = 0; g < GLYPHS; g++) {
+      ctx.fillText(GLYPH_LIST[g], TILE_W / 2, (w * GLYPHS + g) * TILE_H + TILE_H * 0.54);
+    }
+  }
+  const rgba = ctx.getImageData(0, 0, c.width, c.height).data;
+  const a = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < a.length; i++) a[i] = rgba[i * 4 + 3];
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R8, TILE_W, TILE_H, GLYPHS * 2, 0, gl.RED, gl.UNSIGNED_BYTE, a);
+  gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// ---------- text: one glyph index per character, row-major in a 1024-wide texture ----------
+function buildText() {
+  const h = Math.ceil(N / TEXT_W);
+  const bytes = new Uint8Array(TEXT_W * h);
+  for (let i = 0; i < N; i++) bytes[i] = GLYPH_OF.get(CHARS[i]) || 0;
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, TEXT_W, h, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, bytes);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return tex;
+}
+
+// ---------- shaders ----------
+const VS = `#version 300 es
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// The scene: vec3 scene(vec2 cell, vec2 uv) returns linear light for one letter cell, HDR allowed
+// (the light core runs to 4+). uv is page-normalised, y down: row 0 is the first line of the text.
+// Write a new one per subject; see references/scenes.md.
+const PROCEDURAL_SCENE = `
+uniform float uAspect;   // page width / height
+uniform float uTime;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+float fbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+  return s;
+}
+
+// page-normalised (y down): the boat low on the sea, the moon high above
+const vec2 BOAT = vec2(0.74, 0.695);          // where the boat starts; after the calm it sails on, ahead and to the left
+const float CX = 0.60;                       // the eye looks out over this point of the page
+const vec2 MOON = vec2(0.30, 0.20);
+const float HZ = 0.58;                       // the horizon
+const float CALM_FROM = 8.0, CALM_TO = 24.0; // "and the wind ceased, and there was a great calm" (4:39)
+const float L = 0.10;                        // half the boat's length, in the boat's frame
+const float BS = 0.65;                        // the boat's frame to the page, aspect-true
+const float CAM = 47.0;                      // the eye's height over the water, in wave units: sets the size of the near swells
+
+// the moment, shared by the sky, the sea and the boat; set at the top of scene()
+float gT, gTs, gCalm, gStorm, gFlash, gLi, gLt, gBoltX, gMoonOut;
+
+// how far the boat has sailed, in wave units: nothing in the storm, then a steady pace once the sea is still,
+// eased in (a softplus, written so it cannot overflow)
+float travelAt(float t) { float z = (t - 16.0) / 4.0; return 1.6 * 4.0 * (max(z, 0.0) + log(1.0 + exp(-abs(z)))); }
+
+// how much of a layer whose top edge is at y covers this cell (y down), soft over about a cell
+float cover(float y, float top, float aa) { return smoothstep(top - aa, top + aa, y); }
+float seg(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
+float line(float d, float w, float aa) { return smoothstep(w + 0.3 * aa, w - 0.3 * aa, d); }
+float inside(float d, float aa) { return smoothstep(-0.5 * aa, 0.5 * aa, d); }   // d > 0 inside, soft over a cell
+
+// the storm's own clock: full pace while it rages, slowing to nothing as it calms, so nothing jumps when it ends
+float stormTime(float t) {
+  float u = clamp((t - CALM_FROM) / (CALM_TO - CALM_FROM), 0.0, 1.0);
+  return min(t, CALM_FROM) + (CALM_TO - CALM_FROM) * (u - u * u * u + 0.5 * u * u * u * u);
+}
+
+// fog that rolls rather than slides: two layers drifting against each other through a slowly turning warp
+float fog(vec2 p, float t) {
+  vec2 w = vec2(fbm(p * 0.7 + vec2(t * 0.06, 0.0)), fbm(p * 0.7 + vec2(3.1, -t * 0.05)));
+  return 0.6 * fbm(p + 1.6 * w + vec2(t * 0.07, 0.0)) + 0.4 * fbm(p * 1.8 + w - vec2(t * 0.12, 0.0));
+}
+
+// the sky toward page point p (aspect-true x, page y down); the water's reflection leaves the moon out
+vec3 sky(vec2 p, bool withMoon) {
+  float x = p.x, y = p.y;
+  float hz = clamp(y / HZ, 0.0, 1.0);
+  vec3 col = mix(vec3(0.03, 0.045, 0.13), vec3(0.17, 0.19, 0.36), hz * hz);
+  vec2 m = vec2(x - MOON.x * uAspect, y - MOON.y);
+  float r = length(m);
+  float moonGlow = exp(-r * 9.0);
+  float mo = withMoon ? gMoonOut : 0.0;
+  col += mo * vec3(0.50, 0.60, 1.0) * (0.35 * exp(-r * 14.0) + 0.10 * exp(-r * 3.0));
+
+  // stars in the clearing once it is calm: many faint, a few bright
+  vec2 cell = floor(vec2(x / uAspect * uGrid.x, y * uGrid.y));
+  float h = hash(cell);
+  if (h > 0.985) {
+    float mag = pow(hash(cell + 3.1), 5.0);
+    float tw = 0.75 + 0.25 * sin(gT * (0.6 + 1.5 * fract(h * 53.0)) + h * 300.0);
+    col += gCalm * vec3(0.8, 0.86, 1.0) * (0.08 + 2.0 * mag) * tw * (1.0 - hz) * (1.0 - smoothstep(0.05, 0.4, moonGlow * gMoonOut));
+  }
+  float seas = 0.78 + 0.22 * smoothstep(0.35, 0.65, fbm(m * 70.0 + 5.0));
+  col = mix(col, vec3(0.85, 0.92, 1.0) * 2.2 * seas, mo * smoothstep(0.019 + 1.0 / uGrid.y, 0.019 - 1.0 / uGrid.y, r));
+
+  // cloud: one rolling overcast in the storm, breaking up and parting round the moon as it calms, then drifting on
+  vec2 cp = vec2(x * 1.4, y * 4.5);
+  vec2 wp = vec2(fbm(cp * 0.8 + vec2(gTs * 0.10 + gT * 0.02, 0.0)), fbm(cp * 0.8 + vec2(5.2, -gTs * 0.07)));
+  float cl = fbm(cp + 1.8 * wp + vec2(gTs * 0.16 + gT * 0.05, 0.0));
+  float cloud = smoothstep(mix(0.15, 0.40, gCalm), mix(0.45, 0.68, gCalm), cl) * mix(1.0, smoothstep(0.06, 0.30, r), gCalm);
+  float rim = cloud * (1.0 - smoothstep(0.55, 0.85, cl));
+  col = mix(col, vec3(0.11, 0.12, 0.17) * (0.5 + 2.0 * cl * cl), cloud);   // dark bodies, paler where they roll over
+  col += gCalm * rim * vec3(0.70, 0.80, 1.0) * (0.15 + 1.4 * moonGlow);
+  // the other side (5:1): a low far shore coming up out of the haze ahead as they sail, a few lights along it
+  float ahead = smoothstep(14.0, 70.0, gT);
+  float xs = x / uAspect;
+  float shore = HZ - ahead * (0.008 + 0.040 * fbm(vec2(xs * 7.0, 1.3)) * smoothstep(0.62, 0.05, xs) + 0.006 * smoothstep(0.7, 0.2, xs));
+  // moonlit haze low over the water behind the shore, so the land stands dark against it
+  col += gMoonOut * vec3(0.15, 0.18, 0.30) * exp(-max(HZ - y, 0.0) / 0.04) * step(y, HZ);
+  float land = cover(y, shore, 1.0 / uGrid.y);
+  col = mix(col, vec3(0.03, 0.035, 0.06) + vec3(0.30, 0.34, 0.46) * exp(-max(y - shore, 0.0) * uGrid.y * 0.9) * gMoonOut, land * step(y, HZ + 0.001));   // moonlit crest so the shore reads
+  vec2 lc = vec2(floor(x / uAspect * uGrid.x), floor(y * uGrid.y));
+  float lh = hash(lc + 91.0);
+  col += (withMoon ? 1.0 : 0.0) * ahead * land * step(y, HZ) * step(0.93, lh) * smoothstep(0.55, 0.15, xs) * smoothstep(HZ - 0.008, HZ - 0.002, y)
+       * vec3(1.0, 0.65, 0.3) * 1.4 * (0.7 + 0.3 * sin(gT * (0.5 + lh) + lh * 40.0));
+  // the cloud lit from inside by the stroke, brightest round the bolt
+  float near = exp(-abs(x - gBoltX) * 2.5);
+  col += gFlash * vec3(0.75, 0.80, 1.0) * (0.20 + 0.9 * near) * (0.3 + 1.2 * cl) * (0.4 + 0.6 * cloud);
+  // the bolt itself, jagged, for the first instant of the flash
+  float jag = 0.05 * (fbm(vec2(y * 10.0, gLi * 3.7)) - 0.5) + 0.012 * (noise(vec2(y * 70.0, gLi)) - 0.5);
+  float dc = (x - gBoltX - jag) * uGrid.x / uAspect;
+  col += gFlash * exp(-gLt * 10.0) * smoothstep(0.08, 0.12, y) * step(y, HZ)
+       * (vec3(0.9, 0.92, 1.0) * 3.5 * exp(-dc * dc * 1.2) + vec3(0.5, 0.55, 0.9) * 0.4 * exp(-abs(dc) * 0.15));
+  return col;
+}
+
+// one octave of the sea: crossing swells with sharp crests and broad troughs
+float seaOctave(vec2 uv, float choppy) {
+  uv += noise(uv) * 2.0 - 1.0;
+  vec2 wv = 1.0 - abs(sin(uv)), swv = abs(cos(uv));
+  wv = mix(wv, swv, wv);
+  return pow(max(1.0 - pow(wv.x * wv.y, 0.65), 0.0), choppy);
+}
+// the sea's height at w (across, away), in wave units; octaves under a few cells wide here (foot: one cell, in
+// wave units) fade out, so the distance stays smooth instead of shimmering
+float seaH(vec2 w, float ph, float foot, float choppy) {
+  float freq = 0.16, a = 1.0, h = 0.0, scale = 1.0;
+  vec2 uv = w * vec2(0.75, 1.0);
+  for (int i = 0; i < 5; i++) {
+    float fade = smoothstep(1.5, 4.0, 6.2832 / (freq * scale) / foot);
+    h += a * fade * (seaOctave((uv + ph) * freq, choppy) + seaOctave((uv - ph) * freq, choppy));
+    uv = mat2(1.6, 1.2, -1.2, 1.6) * uv; scale *= 2.0; freq *= 1.9; a *= 0.22;
+    choppy = mix(choppy, 1.0, 0.2);
+  }
+  return h;
+}
+// the storm sea: ridged crests of every size, each running downwind at its own speed and a little off the wind, so
+// the surface keeps changing shape instead of sliding; sets of bigger waves pass through
+float stormH(vec2 w, float foot) {
+  vec2 wind = normalize(vec2(1.0, -0.6));      // aft, and toward the eye
+  float group = 0.5 + noise(w * 0.006 - wind * 0.015 * gTs);
+  float h = 0.0, a = 1.0, f = 0.03;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    float an = 0.55 * fi - 0.9 + 0.35 * sin(fi * 2.3);
+    vec2 dI = mat2(cos(an), sin(an), -sin(an), cos(an)) * wind;
+    vec2 wm = w - dI * (1.1 / sqrt(f)) * gTs;   // longer waves run faster
+    vec2 q = vec2(dot(wm, dI), 0.4 * dot(wm, vec2(-dI.y, dI.x))) * f;   // crests long across their run
+    float r = 1.0 - abs(2.0 * noise(q + 3.7 * fi) - 1.0);
+    h += a * smoothstep(1.5, 4.0, 1.0 / f / foot) * r * r;
+    a *= 0.55; f *= 2.0;
+  }
+  return 1.3 * h * group;
+}
+float seaAt(vec2 w, float ph, float foot, float choppy) {
+  float hc = gCalm > 0.001 ? seaH(w, ph, foot, choppy) : 0.0;
+  float hs = gStorm > 0.001 ? stormH(w, foot) : 0.0;
+  return mix(hs, hc, gCalm);
+}
+
+// him, in his own frame p (units of his height; x toward the stern, y up from his feet), and px one cell there.
+// Faces the bow; a cream tunic, a crimson mantle over his back and shoulder, dark hair to the shoulders, a beard.
+vec4 figure(vec2 p, float px) {
+  float up = smoothstep(4.0, 6.5, gT);       // asleep on a pillow in the stern (4:38); woken, he arises
+  float shown = smoothstep(6.0, 7.5, gT);    // arms drawn from here on, at his sides once lowered
+  float reach = shown * (1.0 - smoothstep(32.0, 37.0, gT));   // lifts his arms against the wind (4:39); lowers them once all is still
+  float lightC = 1.0 + 1.6 * gFlash;
+  vec3 tunicC = vec3(0.40, 0.37, 0.30), mantleC = vec3(0.52, 0.10, 0.07), skinC = vec3(0.50, 0.31, 0.19), hairC = vec3(0.25, 0.15, 0.08);   // lifted so he stays clear of the dark sea
+  vec3 cool = gCalm * vec3(0.04, 0.05, 0.08) + gFlash * vec3(0.5);
+
+  // asleep: a low bundle along the stern, wrapped in his mantle, his head on the cushion
+  vec2 q = p - vec2(0.18, 0.25);
+  float lying = max(inside(1.0 - length(q / vec2(0.30, 0.10)), px * 3.0), inside(1.0 - length((q - vec2(0.33, 0.03)) / vec2(0.07, 0.07)), px * 14.0));
+  vec3 lyingC = mix(mantleC, skinC * 0.8, step(0.27, q.x)) * (0.8 + 0.3 * smoothstep(0.0, 0.1, q.y)) * lightC + cool;
+  float lyingA = lying * (1.0 - smoothstep(0.0, 0.25, up));
+
+  // standing: rising from a crouch; in the storm his clothes and hair stream aft and the hem flogs
+  p.y /= mix(0.35, 1.0, up);
+  float flog = gStorm * 0.035 * sin(gTs * 6.0 + p.y * 7.0) * (1.0 - p.y);
+  float lean = gStorm * 0.05 * p.y + flog + 0.008 * sin(gT * 0.7 + p.y * 3.0);
+  float bx = p.x - lean;
+  // the outline: full at the hem, in at the girdle, the chest, then round shoulders
+  float wb = mix(0.165, 0.115, smoothstep(0.05, 0.50, p.y));
+  wb = mix(wb, 0.135, smoothstep(0.52, 0.68, p.y));
+  float shoulder = 0.80 - 0.9 * max(abs(bx + 0.005) - 0.06, 0.0) * max(abs(bx + 0.005) - 0.06, 0.0) / 0.006;
+  float body = inside(wb - abs(bx + 0.4 * flog * step(0.0, bx)), px) * inside(p.y, px) * inside(shoulder - p.y, px);
+  float neck = inside(0.035 - abs(bx + 0.012), px) * inside(0.88 - p.y, px) * inside(p.y - 0.70, px);
+  vec2 hc = vec2(-0.025 + gStorm * 0.03, 0.915);
+  vec2 hq = (p - hc) / vec2(0.075, 0.092);
+  float head = inside(1.0 - length(hq), px * 13.0);
+  // hair: over the crown and down behind to the shoulder, blown aft in the storm
+  float hairBack = inside(0.035 + 0.02 * gStorm - seg(p, hc + vec2(0.03, 0.02), hc + vec2(0.05 + 0.06 * gStorm, -0.13 + 0.05 * gStorm)), px);
+  float hair = max(head * max(step(0.62, hq.y), step(0.58, hq.x + 0.2 * hq.y)), hairBack);
+  float beard = head * step(hq.y, -0.55) * step(hq.x, 0.30);
+  // the mantle: over the far shoulder and his back, its edge sweeping down and forward to the hem, a fold at the hip
+  float edge = mix(0.04, -0.07, smoothstep(0.78, 0.15, p.y)) + 0.015 * sin(p.y * 22.0 + 2.0 * flog * 30.0);
+  float mantle = body * inside(bx - edge, px);
+  float girdle = body * (1.0 - mantle) * inside(0.018 - abs(p.y - 0.50), px);
+  // the arms: from both shoulders, raised up and out over the sea, the wide sleeves falling from them
+  float arm = 0.0, sleeve = 0.0, hand = 0.0;
+  for (int k = 0; k < 2; k++) {
+    float sd = k == 0 ? -1.0 : 1.0;           // toward the bow, then toward the stern
+    vec2 S = vec2(0.045 * sd + lean, 0.74);
+    vec2 dir = normalize(mix(vec2(0.04 * sd, -1.0), vec2(0.78 * sd, 0.62), reach));
+    vec2 E = S + dir * 0.30;
+    arm = max(arm, inside(0.04 - seg(p, S, E), px));
+    sleeve = max(sleeve, inside(0.07 - seg(p, S + vec2(0.0, -0.04), S + dir * 0.16 + vec2(0.0, -0.07)), px) * reach);
+    vec2 hp = E + dir * 0.045;
+    hand = max(hand, max(inside(0.04 - length(p - hp), px), inside(0.022 - seg(p, hp, hp + dir * 0.06), px)));
+  }
+  // light from ahead (the bow side, where the moon is once it clears), shadow aft; folds down the skirt
+  float lit = 0.70 + 0.5 * smoothstep(0.10, -0.12, bx) + 0.15 * smoothstep(0.55, 0.8, p.y);
+  float folds = 0.82 + 0.18 * cos(bx * 70.0 + 3.0 * sin(p.y * 6.0 + gT * 0.3)) * smoothstep(0.62, 0.1, p.y);
+  vec3 c = tunicC * lit * folds;
+  c = mix(c, mantleC * (0.7 + 0.5 * lit) * folds, mantle);
+  c = mix(c, vec3(0.30, 0.20, 0.10) * lit, girdle);
+  c = mix(c, tunicC * (0.9 + 0.35 * reach), max(arm, sleeve) * shown);
+  c = mix(c, skinC * 1.1, hand * shown);
+  c = mix(c, skinC * (0.75 + 0.45 * smoothstep(0.3, -0.6, hq.x)), max(head, neck * step(p.y, 0.85)));
+  c = mix(c, hairC, max(hair, beard));
+  // a cold rim along his front once the moon is out
+  c += gMoonOut * vec3(0.15, 0.18, 0.28) * smoothstep(wb - 0.05, wb, -bx) * body;
+  float a = max(max(body, neck), max(max(head, hair), shown * max(max(arm, sleeve), hand))) * smoothstep(0.0, 0.25, up);
+  c = c * lightC + cool;
+  return a > lyingA ? vec4(c, a) : vec4(lyingC, lyingA);
+}
+
+// the boat in its own frame bp (x toward the stern, y down from the waterline's top), aa one cell there: colour, coverage
+vec4 boat(vec2 bp, float aa) {
+  float sx = bp.x / L;
+  float top = -0.005 - 0.024 * pow(abs(sx), 3.0) - 0.008 * step(sx, 0.0) * sx * sx;   // gunwale, rising to stem and stern
+  vec3 c = vec3(0.0);
+  float a = 0.0;
+
+  // mast, stays to stem and stern, and a sail set forward of the mast, torn by the wind until the wind ceases
+  float mx = -0.014, mTop = -0.155;
+  float spar = line(seg(bp, vec2(mx, 0.0), vec2(mx, mTop)), 0.34 * aa, aa);
+  float stays = max(line(seg(bp, vec2(mx, mTop), vec2(-0.98 * L, -0.0375)), 0.22 * aa, aa),
+                    line(seg(bp, vec2(mx, mTop), vec2(0.95 * L, -0.0256)), 0.22 * aa, aa));
+  vec2 sa = vec2(mx - 0.003, mTop + 0.010), sb = vec2(mx - 0.003, -0.022), sc = vec2(-0.075, -0.034);
+  vec2 e1 = sb - sa, e2 = sc - sb, e3 = sa - sc;
+  float belly = 0.006 * gStorm * sin(gTs * 3.0 + bp.y * 40.0) + 0.002 * sin(gT * 0.8 + bp.y * 30.0);   // flogging, then breathing
+  float inSail = step(0.0, e1.x * (bp.y - sa.y) - e1.y * (bp.x - sa.x))
+               * step(0.0, e2.x * (bp.y - sb.y) - e2.y * (bp.x - sb.x))
+               * step(0.0, e3.x * (bp.y - sc.y) - e3.y * (bp.x - sc.x + belly));
+  float torn = gStorm * smoothstep(0.58, 0.68, fbm(bp * vec2(90.0, 70.0) + vec2(gTs * 0.8, 0.0)));
+  vec3 cloth = vec3(0.26, 0.24, 0.20) * (0.8 + 0.4 * fbm(bp * vec2(40.0, 120.0) + gTs)) + gFlash * vec3(0.8) + gCalm * vec3(0.10, 0.11, 0.14);
+  float sail = inSail * (1.0 - torn);
+  c = mix(c, cloth, sail); a = max(a, sail);
+  vec3 wood = vec3(0.32, 0.22, 0.13) * (1.0 + 0.4 * gCalm) + gFlash * vec3(0.7);   // warm against the cold sea, so the boat reads
+  float rig = max(spar, 0.6 * stays);
+  c = mix(c, wood, rig); a = max(a, rig);
+
+  // him, standing aft of the mast
+  const float FH = 0.095;
+  vec4 f = figure(vec2(bp.x - 0.045, 0.005 - bp.y) / FH, aa / FH);
+  c = mix(c, f.rgb, f.a); a = max(a, f.a);
+
+  // the hull: dark planking, the gunwale catching the light, stem and stern posts sloping in to the waterline
+  float bot = 0.016;
+  float span = 1.0 - 0.22 * clamp((bp.y - top) / (bot - top), 0.0, 1.0);
+  float hull = smoothstep(span + 0.03, span - 0.03, abs(sx)) * cover(bp.y, top, 0.6 * aa) * (1.0 - cover(bp.y, bot, 0.6 * aa));
+  float lit = 0.35 + 1.2 * gFlash + 0.25 * gCalm;
+  vec3 hullC = vec3(0.13, 0.085, 0.05) * (0.7 + 0.6 * smoothstep(0.3, 0.7, noise(vec2(bp.x * 300.0, bp.y * 900.0))))
+             + vec3(0.55, 0.60, 0.70) * exp(-max(bp.y - top, 0.0) / 0.004) * lit;
+  c = mix(c, hullC, hull); a = max(a, hull);
+  return vec4(c, a);
+}
+
+// "there arose a great storm of wind, and the waves beat into the ship" (4:37): night on the sea, lightning in the
+// cloud, one small boat. He sleeps in the stern, rises, lifts his arm against the wind, and the sea goes still;
+// then they sail on toward the other side under the moon.
+vec3 scene(vec2 cell, vec2 uv) {
+  float t = uTime;
+  float aa = 1.0 / uGrid.y;
+  float x = uv.x * uAspect;                  // aspect-true, so the boat keeps its shape on any screen
+  float cxa = CX * uAspect;
+  gT = t;
+  gCalm = smoothstep(CALM_FROM, CALM_TO, t);
+  gStorm = 1.0 - gCalm;
+  gTs = stormTime(t);
+  gMoonOut = smoothstep(0.35, 0.9, gCalm);
+  // lightning: a stroke in most of each 1.9 s slot while the storm rages, flickering as it dies
+  gLi = floor(t / 1.9);
+  gLt = t - gLi * 1.9 - 1.2 * hash(vec2(gLi, 7.0));
+  float strikes = (gLi < 0.5 || hash(vec2(gLi, 3.0)) > 0.4) ? 1.0 : 0.0;
+  gFlash = strikes * step(0.0, gLt) * exp(-gLt * 7.0) * (0.65 + 0.35 * cos(gLt * 48.0)) * gStorm * gStorm;
+  gBoltX = (0.08 + 0.84 * hash(vec2(gLi, 5.0))) * uAspect;
+
+  vec3 col = sky(vec2(x, uv.y), true);
+
+  // the boat's motion: rolling and heaving on the swell, then riding the long calm swell as it sails on
+  float travel = travelAt(t);
+  float under = smoothstep(14.0, 30.0, t);   // under way
+  float bxp = (BOAT.x - 0.08 * smoothstep(14.0, 120.0, t)) * uAspect;
+  float roll = gStorm * 0.20 * sin(gTs * 1.25) + 0.025 * sin(t * 0.55) + 0.010 * sin(t * 1.3);
+  float heave = gStorm * 0.018 * sin(gTs * 1.25 + 1.3) + 0.004 * sin(t * 0.55 + 1.2);
+  float cr = cos(roll), sr = sin(roll);
+  vec2 bp = vec2(x - bxp, uv.y - BOAT.y - heave);
+  bp = vec2(cr * bp.x + sr * bp.y, -sr * bp.x + cr * bp.y) / BS;
+  float ba = aa / BS;
+  float Bz = CAM / (BOAT.y + heave + 0.016 * BS - HZ);   // the waterline, in wave units
+  vec2 Bw = vec2((bxp - cxa) * Bz - travel, Bz);
+  float halfB = L * BS * Bz;                             // half the boat's length, in wave units
+
+  // the sea: the eye CAM above it; each cell sees one patch of water, lit by the sky it reflects
+  float d = uv.y - HZ;
+  if (d > 0.0) {
+    float Z = CAM / (d + 0.002);
+    vec2 w = vec2((x - cxa) * Z - travel, Z);
+    float foot = Z * Z / CAM * aa;           // one cell, in wave units, here
+    float HS = mix(2.6, 0.9, gCalm);         // swell height: the great storm, then the long calm swell
+    float choppy = mix(4.0, 1.4, gCalm);
+    float ph = 0.35 * t + 1.1 * gTs;
+    // far off a cell spans much more water in depth than across; fade the waves by their width across, so the far
+    // sea keeps its swells, crushed into the long rows of light real distant water shows
+    float footW = min(foot, 1.5 * Z * uAspect / uGrid.x);
+    float eps = max(0.5 * footW, 0.08);
+    float h = seaAt(w, ph, footW, choppy);
+    float hx = seaAt(w + vec2(eps, 0.0), ph, footW, choppy), hz = seaAt(w + vec2(0.0, eps), ph, footW, choppy);
+    vec3 n = normalize(vec3(-(hx - h) / eps * HS, 1.0, -(hz - h) / eps * HS));
+    vec3 v = normalize(vec3(w.x + travel, -CAM, w.y));
+    vec3 r = reflect(v, n);
+    r.y = max(r.y, 0.002); r.z = max(r.z, 0.05);
+    vec3 refl = sky(vec2(cxa + r.x / r.z, HZ - r.y / r.z), false);   // the sky this facet mirrors
+    float fres = 0.04 + 0.7 * pow(clamp(1.0 - dot(n, -v), 0.0, 1.0), 3.0);
+    // the body of the water: dark, green where the light comes through a crest
+    vec3 body = vec3(0.025, 0.05, 0.065) * (0.7 + 0.6 * n.y) + vec3(0.05, 0.13, 0.11) * smoothstep(0.9, 2.1, h) * gStorm * (0.3 + 3.0 * gFlash)
+              + gMoonOut * vec3(0.02, 0.03, 0.06);
+    vec3 water = mix(body, refl, fres);
+    // moonlight on the swells: every slope turned toward the moon catches it, right across the sea
+    vec3 Ld = normalize(vec3(-0.45, 0.35, 1.0));
+    float ml = dot(n, Ld) - Ld.y;
+    float sheen = smoothstep(0.0, 0.06, ml) * smoothstep(0.03, 0.35, d);   // dimmer far off, so he stands out against it
+    water += gMoonOut * vec3(0.07, 0.09, 0.17) * sheen * (0.6 + 0.4 * h);
+    // in the storm, the faces of the big swells catch the grey light off the low cloud, so their shapes read between strokes
+    float face = smoothstep(-0.02, 0.10, dot(n, normalize(vec3(0.2, 0.25, -1.0))) - 0.24);
+    water += gStorm * vec3(0.06, 0.08, 0.09) * face * smoothstep(0.0, 0.05, d) * (1.0 + 2.5 * gFlash);
+    // and every slope turned up toward the overcast catches its grey light, so the chop reads right across the sea
+    vec3 Ls = normalize(vec3(0.25, 0.45, 1.0));
+    float sl = smoothstep(0.0, 0.10, dot(n, Ls) - Ls.y) * smoothstep(0.02, 0.20, d);
+    water += gStorm * vec3(0.07, 0.09, 0.10) * sl * (0.6 + 0.4 * h) * (1.0 + 1.0 * gFlash);
+    // the heaped crests stand up into what light there is, the troughs between them stay black
+    water += gStorm * vec3(0.05, 0.07, 0.08) * smoothstep(0.4, 1.8, h) * smoothstep(0.0, 0.08, d) * (1.0 + 2.0 * gFlash);
+    // and here and there a glint off a ripple, coming and going
+    float gh = hash(cell + 17.0);
+    water += gMoonOut * step(0.975, gh) * pow(0.5 + 0.5 * sin(t * (1.0 + 2.0 * fract(gh * 91.0)) + gh * 500.0), 12.0)
+           * vec3(0.55, 0.65, 0.95) * (0.4 + sheen) * smoothstep(0.0, 0.05, d);
+    // foam: torn white on the crests, and streaks of it dragged down their backs, while the wind blows
+    float streak = fbm(w * vec2(0.09, 0.03) + vec2(ph * 0.12, 0.0));
+    float spume = smoothstep(0.60, 0.75, fbm(w * vec2(0.03, 0.35) - vec2(ph * 0.5, 0.0))) * smoothstep(0.3, 1.2, h);   // blown downwind in lines
+    float foam = gStorm * (smoothstep(1.35, 2.0, h) * smoothstep(0.3, 0.6, fbm(w * 0.35 + ph * 0.3))
+               + 0.7 * smoothstep(0.62, 0.78, streak) * smoothstep(0.6, 1.3, h) + 0.5 * spume);
+    water += vec3(0.32, 0.36, 0.40) * foam * (0.8 + 1.5 * gFlash);
+    // the stroke on the water: the whole sea flashes, most under the bolt, and the bolt itself runs down the
+    // swells in a broken column
+    vec2 rp = vec2(cxa + r.x / r.z, HZ - r.y / r.z);   // the point of sky this facet mirrors
+    float nearW = exp(-abs(x - gBoltX) * 1.5);
+    water += gFlash * vec3(0.10, 0.12, 0.15) * (0.3 + 1.5 * nearW) * n.y;
+    float bc = exp(-abs(rp.x - gBoltX) / 0.03) * smoothstep(0.08, 0.15, rp.y) * smoothstep(0.0, 0.03, d);
+    water += gFlash * exp(-gLt * 4.0) * vec3(0.75, 0.80, 1.0) * 1.6 * bc;
+    // the moon on the water: a small bright patch of glitter under it, breaking and re-forming on the swell
+    float mr = length(rp - vec2(MOON.x * uAspect, MOON.y));
+    water += gMoonOut * vec3(0.70, 0.78, 1.0) * (1.19 * smoothstep(0.055, 0.0, mr) + 0.255 * exp(-mr / 0.06)) * smoothstep(0.0, 0.03, d);
+    // the wake: two arms opening behind the boat, and the churned trail between them
+    vec2 rw = w - Bw;
+    float back = rw.x + halfB;
+    float arms = abs(abs(rw.y) - 0.36 * back);
+    float wide = max(1.5 * foot, 0.8 + 0.03 * back);
+    float wake = step(0.0, back) * exp(-back / 140.0) * smoothstep(wide, 0.0, arms) * (0.55 + 0.45 * sin(back * 0.5 - t * 1.5));
+    float aft = rw.x - halfB;
+    float trail = smoothstep(0.0, 6.0, aft + 6.0) * exp(-max(aft, 0.0) / 100.0) * exp(-abs(rw.y) / (3.0 + 0.06 * max(aft, 0.0)))
+                * (0.5 + 0.8 * fbm(rw * vec2(0.15, 0.5) + vec2(t * 0.4, 0.0)));
+    water += under * vec3(0.36, 0.42, 0.62) * (wake + 0.6 * trail);
+    // far off the swells are too fine to draw one by one, so they read as long streaks of light along the water,
+    // crowding toward the horizon: the horizon's glow, the moon's light, a stroke's flash
+    float farW = 1.0 - smoothstep(0.05, 0.17, d);
+    float streaks = smoothstep(0.50, 0.78, fbm(vec2(w.x * 0.012 + ph * 0.03, log(Z) * 9.0)));
+    water += farW * streaks * (vec3(0.09, 0.10, 0.17) + gMoonOut * vec3(0.10, 0.12, 0.22) * (0.5 + exp(-abs(x - MOON.x * uAspect) * 2.0))
+           + gFlash * vec3(0.45, 0.50, 0.65) * (0.4 + nearW));
+    // haze into the distance
+    water = mix(water, vec3(0.12, 0.13, 0.22) * (1.0 + 2.0 * gFlash * gStorm), exp(-d / 0.012));
+    // in the calm, the boat and he are mirrored in it, broken by the ripples
+    vec2 bpr = vec2(bp.x + n.x * 0.06, 2.0 * 0.016 - bp.y + n.z * 0.03);
+    if (bp.y > 0.012 && gCalm > 0.0) {
+      vec4 mir = boat(bpr, ba);
+      water = mix(water, mir.rgb * 0.35 + water * 0.4, mir.a * gCalm * 0.6 * smoothstep(0.30, 0.0, bp.y - 0.016));
+    }
+    col = water;
+  }
+  // rain sweeping across the horizon in the storm, haze along it, and in the calm, mist lying on the water
+  float rain = smoothstep(0.45, 0.75, fbm(vec2(x * 2.5 - gTs * 0.08, uv.y * 0.6 + gTs * 0.02))) * exp(-pow((uv.y - HZ) / 0.10, 2.0));
+  col = mix(col, vec3(0.13, 0.14, 0.17) + gFlash * 0.4, 0.6 * rain * gStorm);
+  col += vec3(0.08, 0.09, 0.15) * exp(-abs(uv.y - HZ) / 0.015);
+  // in the storm, far swells heave up across the horizon, spume blowing off their tops
+  float crest = HZ - gStorm * (0.004 + 0.014 * smoothstep(0.35, 0.8, fbm(vec2(x * 5.0 - gTs * 0.04, gTs * 0.06))));
+  float swellUp = cover(uv.y, crest, aa) * step(uv.y, HZ + aa) * smoothstep(0.0, 0.3, gStorm);   // off in the calm, clear of the shore lights
+  col = mix(col, vec3(0.05, 0.06, 0.08) + vec3(0.20, 0.23, 0.27) * exp(-max(uv.y - crest, 0.0) * uGrid.y * 0.8) + gFlash * vec3(0.25, 0.28, 0.35), swellUp);
+  float mist = smoothstep(0.38, 0.70, fog(vec2(x * 2.2, uv.y * 7.0), t * 0.3));
+  col += gCalm * vec3(0.20, 0.23, 0.40) * mist * (exp(-pow((uv.y - HZ - 0.04) / 0.05, 2.0)) + 0.6 * exp(-pow((uv.y - 0.90) / 0.08, 2.0)));
+
+  vec4 b = boat(bp, ba);
+  col = mix(col, b.rgb, b.a);
+
+  // the waves beating into the ship: foam along the waterline and spray bursting over the bow; then, under way,
+  // a little white water at the bow
+  float sx = bp.x / L;
+  float wash = exp(-abs(bp.y - 0.016) / 0.004) * smoothstep(1.2, 0.9, abs(sx)) * smoothstep(0.4, 0.75, fbm(vec2(bp.x * 150.0 - gTs * 2.0, gTs)));
+  float sp = fbm(bp * vec2(120.0, 160.0) + vec2(gTs * 3.0, gTs));
+  float burst = 0.5 + 0.5 * sin(gTs * 1.25 - 0.5);   // as the bow drives into each swell
+  float spray = smoothstep(0.55, 0.8, sp) * exp(-length((bp - vec2(-L, -0.012)) * vec2(1.0, 1.6)) / 0.03) * burst;
+  col += gStorm * vec3(0.50, 0.55, 0.60) * (wash + spray) * (1.0 + 1.5 * gFlash);
+  float bow = exp(-length((bp - vec2(-0.95 * L, 0.016)) * vec2(1.0, 3.0)) / 0.008) * smoothstep(0.3, 0.7, fbm(vec2(bp.x * 200.0 + t * 3.0, t)));
+  col += under * gCalm * vec3(0.30, 0.34, 0.45) * bow;
+  return col;
+}`;
+
+// A picture as the scene: cover-fit to the page, and lifted by the inverse of the tone map below,
+// so it comes out as itself and its highlights still feed the bloom.
+const IMAGE_SCENE = `
+uniform sampler2D uImage;
+uniform vec2 uCover;     // image uv scale for a cover fit
+vec3 scene(vec2 cell, vec2 uv) {
+  vec3 c = texture(uImage, (uv - 0.5) * uCover + 0.5).rgb;
+  float m = min(max(c.r, max(c.g, c.b)), 0.985);
+  return c * (-log(1.0 - m) / 1.8) / max(m, 1e-4);
+}`;
+
+// Pass 1: the scene, one texel per letter cell, plus its bright part for the bloom.
+const sceneFS = body => `#version 300 es
+precision highp float;
+uniform vec2 uGrid;      // cols, rows
+layout(location = 0) out vec4 o;
+layout(location = 1) out vec4 bright;   // only the bright part, mipmapped into bloom
+${body}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  vec3 col = scene(cell, (cell + 0.5) / uGrid);
+  // soft tone map on the brightest channel, so bright colour stays colour instead of washing to white
+  float m = max(col.r, max(col.g, col.b));
+  float mapped = 1.0 - exp(-m * 1.8);
+  col *= mapped / max(m, 1e-4);
+  col = mix(col, vec3(mapped), smoothstep(1.2, 5.0, m));   // white-hot: the hottest light loses its colour
+  o = vec4(col, 1.0);
+  bright = vec4(col * smoothstep(0.45, 0.9, mapped), 1.0);
+}`;
+
+// Pass 2: letters. Each screen pixel finds its cell, its character, and the scene colour of that cell.
+const LETTER_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+precision mediump sampler2DArray;
+uniform usampler2D uText;
+uniform sampler2D uScene;
+uniform sampler2D uBloom;
+uniform sampler2DArray uAtlas;
+uniform vec2 uRes;       // device px
+uniform vec2 uOrigin;    // page top-left, device px, y down
+uniform vec2 uCell;      // cell size, device px
+uniform vec2 uGrid;
+uniform int uN;
+uniform float uGain;
+out vec4 o;
+
+// past 1.0 a colour runs to white instead of clipping, so overexposed light reads hot, not flat
+vec3 shoulder(vec3 c) {
+  float m = max(c.r, max(c.g, c.b));
+  return mix(c / max(m, 1.0), vec3(1.0), clamp((m - 1.0) * 0.5, 0.0, 0.85));
+}
+
+void main() {
+  vec2 fc = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 cf = (fc - uOrigin) / uCell;
+  // derivatives before any early return: a quad with a returned pixel gives garbage gradients,
+  // which pick a coarse mip and draw faint bars along cell edges
+  vec2 dx = dFdx(cf), dy = dFdy(cf);
+  o = vec4(0.0, 0.0, 0.0, 1.0);
+  if (cf.x < 0.0 || cf.y < 0.0 || cf.x >= uGrid.x || cf.y >= uGrid.y) return;
+  ivec2 cell = ivec2(cf);
+  int idx = cell.y * int(uGrid.x) + cell.x;
+  if (idx >= uN) return;
+  uint code = texelFetch(uText, ivec2(idx % ${TEXT_W}, idx / ${TEXT_W}), 0).r;
+  // everything reads the scene filtered across cells, so colour, fill and weight blend with no cell steps
+  vec2 uv = cf / uGrid;
+  vec3 scene = texture(uScene, uv).rgb;
+  float lum = dot(scene, vec3(0.2126, 0.7152, 0.0722));
+  float peak = max(scene.r, max(scene.g, scene.b));
+  // background: black in the dark, the scene itself where it is bright (a sun reads nearly solid)
+  // bloom: the bright part blurred at several radii, so light spills past its edge onto the dark and the letters
+  vec3 bloom = 0.4 * textureLod(uBloom, uv, 1.5).rgb + 0.6 * textureLod(uBloom, uv, 3.0).rgb
+             + 0.8 * textureLod(uBloom, uv, 4.5).rgb + 1.0 * textureLod(uBloom, uv, 6.0).rgb;
+  vec3 bg = shoulder(scene * smoothstep(0.04, 0.7, lum) + bloom * 0.5);
+  o = vec4(bg, 1.0);                         // spaces show the background, so words sit in light, not holes
+  if (code == 0u) return;
+
+  // gradients of the continuous cell coordinate keep mip selection stable across cell edges
+  vec2 g = fract(cf);
+  float layer = float(code - 1u);
+  float reg  = textureGrad(uAtlas, vec3(g, layer), dx, dy).r;
+  float bold = textureGrad(uAtlas, vec3(g, layer + ${GLYPHS}.0), dx, dy).r;
+  float cov = mix(reg, bold, smoothstep(0.08, 0.4, lum));    // hotter light, heavier letter
+
+  // ink: the scene lifted, with a floor in the scene's own hue so letters stay readable in the dark
+  vec3 ink = shoulder(scene * uGain + 0.24 * scene / max(peak, 0.03) + bloom);
+  vec3 lit = 1.0 - (1.0 - bg) * (1.0 - ink);                 // screen over the background: bright letters on bright fill stay faint
+  o = vec4(mix(bg, lit, cov), 1.0);
+}`;
+
+function compile(fsSrc) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fsSrc]]) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) {
+    const name = gl.getActiveUniform(p, i).name;
+    u[name] = gl.getUniformLocation(p, name);
+  }
+  return { p, u };
+}
+
+const sceneProg = compile(sceneFS(SCENE_SRC ? IMAGE_SCENE : PROCEDURAL_SCENE));
+const letterProg = compile(LETTER_FS);
+const textTex = buildText();
+let atlasTex = null;
+gl.bindVertexArray(gl.createVertexArray());
+
+// ---------- picture scene: an image or a looping video ----------
+let media = null, mediaTex = null, mediaUploaded = false, notice = "";
+if (SCENE_SRC) {
+  media = document.createElement(IS_VIDEO ? "video" : "img");
+  if (IS_VIDEO) Object.assign(media, { muted: true, loop: true, playsInline: true, autoplay: true });
+  media.src = SCENE_SRC;
+  media.onerror = () => { notice = `could not load ${SCENE_SRC}`; };
+  mediaTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);  // a big picture shrinks to a few hundred cells
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+const mediaSize = () => IS_VIDEO ? [media.videoWidth, media.videoHeight] : [media.naturalWidth, media.naturalHeight];
+const mediaReady = () => IS_VIDEO ? media.readyState >= 2 : media.complete && media.naturalWidth > 0;
+
+function uploadMedia() {
+  if (!media || !mediaReady() || (mediaUploaded && !IS_VIDEO)) return;
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  try {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, media);
+  } catch (e) {
+    // file:// pictures are cross-origin to WebGL; serve the folder instead
+    media = null;
+    fail("picture blocked: serve this folder (python3 -m http.server) instead of opening the file");
+  }
+  gl.generateMipmap(gl.TEXTURE_2D);
+  mediaUploaded = true;
+}
+
+// ---------- layout: the whole text exactly once at zoom 1 ----------
+const lay = {};      // cols, rows, fitCell (CSS px cell height at zoom 1)
+const view = { zoom: 1, ox: 0, oy: 0 };   // page top-left in CSS px
+// what the reader chose: the letter at screen centre and the cell size (null = fitted). Only zoom and pan change it,
+// so any run of resizes (an animated F11) lands on the same view
+const want = { anchor: 0, cell: null };
+let sceneTex = null, bloomTex = null, sceneFbo = null;
+
+// reflow = false keeps the columns, so the text does not reshuffle on every step of a window animation
+function fit(reflow = true) {
+  const W = innerWidth, H = innerHeight;
+  const cols = reflow || !lay.cols ? Math.max(1, Math.round(Math.sqrt(N * W / (H * CELL_ASPECT)))) : lay.cols;
+  const rows = Math.ceil(N / cols);
+  const regrid = cols !== lay.cols;
+  Object.assign(lay, { cols, rows, fitCell: Math.min(W / (cols * CELL_ASPECT), H / rows) });
+
+  const dpr = Math.min(devicePixelRatio || 1, 1.5);   // weak GPUs hang at full high-DPI resolution
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  view.zoom = want.cell ? Math.min(maxZoom(), Math.max(1, want.cell / lay.fitCell)) : 1;
+  centreOn(want.anchor);
+  if (!regrid) return;
+
+  for (const t of [sceneTex, bloomTex]) if (t) gl.deleteTexture(t);
+  [sceneTex, bloomTex] = [gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR].map(minFilter => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);   // filtered across cells, so the picture has no cell steps
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  });
+  sceneFbo = sceneFbo || gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTex, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, bloomTex, 0);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// after the reader zooms or pans: remember the centre letter and the cell size
+let urlTimer = 0;
+function remember() {
+  const c = Math.floor((innerWidth / 2 - view.ox) / (cellH() * CELL_ASPECT)), r = Math.floor((innerHeight / 2 - view.oy) / cellH());
+  want.anchor = Math.min(N - 1, Math.max(0, r * lay.cols + Math.min(lay.cols - 1, Math.max(0, c))));
+  want.cell = view.zoom > 1 ? cellH() : null;
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(shareUrl, 300);
+}
+
+// the address bar always holds the current view, so it can be copied and shared
+function shareUrl() {
+  const q = new URLSearchParams(location.search);
+  q.delete("out");   // the pull-back plays once, not on a reload of this URL
+  const m = markAt(innerWidth / 2, innerHeight / 2);
+  if (view.zoom > 1.05 && m) { q.set("zoom", view.zoom.toFixed(1)); q.set("at", m[1]); }
+  else { q.delete("zoom"); q.delete("at"); }
+  const s = q.toString().replace(/%3A/g, ":");   // keep 5:14 readable in the address bar
+  history.replaceState(null, "", s ? `?${s}` : location.pathname);
+}
+
+function centreOn(index) {
+  const [c, r] = cellOf(Math.min(N - 1, Math.max(0, index)));
+  view.ox = innerWidth / 2 - (c + 0.5) * cellH() * CELL_ASPECT;
+  view.oy = innerHeight / 2 - (r + 0.5) * cellH();
+  clampView();
+}
+const maxZoom = () => Math.max(1, MAX_CELL_CSS / lay.fitCell);
+
+const cellH = () => lay.fitCell * view.zoom;
+const pageW = () => lay.cols * cellH() * CELL_ASPECT;
+const pageH = () => lay.rows * cellH();
+
+function clampView() {
+  for (const [k, page, screen] of [["ox", pageW(), innerWidth], ["oy", pageH(), innerHeight]]) {
+    view[k] = page <= screen ? (screen - page) / 2 : Math.min(0, Math.max(screen - page, view[k]));
+  }
+}
+
+function zoomAt(mx, my, factor) {
+  const z = Math.min(maxZoom(), Math.max(1, view.zoom * factor));
+  const k = z / view.zoom;
+  view.ox = mx - (mx - view.ox) * k;
+  view.oy = my - (my - view.oy) * k;
+  view.zoom = z;
+  clampView();
+  remember();
+}
+
+// a mark key ("8:12", "3") or a plain character offset
+function offsetOf(at) {
+  const m = MARKS.find(e => e[1] === at);
+  return m ? m[0] : Math.max(0, Math.min(N - 1, Number(at) || 0));
+}
+
+function cellOf(index) { return [index % lay.cols, Math.floor(index / lay.cols)]; }
+
+// letters (characters, spaces included, like the zoom-1 total) whose cells touch the screen
+function visibleLetters() {
+  const cw = cellH() * CELL_ASPECT, chh = cellH();
+  const c0 = Math.max(0, Math.floor(-view.ox / cw)), c1 = Math.min(lay.cols, Math.ceil((innerWidth - view.ox) / cw));
+  const r0 = Math.max(0, Math.floor(-view.oy / chh)), r1 = Math.min(lay.rows, Math.ceil((innerHeight - view.oy) / chh));
+  if (c1 <= c0 || r1 <= r0) return 0;
+  const lastLen = N - (lay.rows - 1) * lay.cols;           // the last row is only partly filled
+  return (r1 - r0) * (c1 - c0) - (r1 === lay.rows ? Math.max(0, c1 - Math.max(c0, lastLen)) : 0);
+}
+
+// the mark (verse, paragraph) under a screen point
+function markAt(mx, my) {
+  const c = Math.floor((mx - view.ox) / (cellH() * CELL_ASPECT));
+  const r = Math.floor((my - view.oy) / cellH());
+  if (!MARKS.length || c < 0 || r < 0 || c >= lay.cols || r >= lay.rows) return null;
+  const i = r * lay.cols + c;
+  if (i >= N || i < MARKS[0][0]) return null;
+  let lo = 0, hi = MARKS.length - 1;     // last mark starting at or before i
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (MARKS[m][0] <= i) lo = m; else hi = m - 1; }
+  return MARKS[lo];
+}
+
+// ---------- input ----------
+let mouse = null, drag = null;
+const touches = new Map();   // pointerId -> [x, y]; two at once is a pinch
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015)));
+}, { passive: false });
+const startDrag = (x, y) => { drag = { x, y, ox: view.ox, oy: view.oy }; };
+canvas.addEventListener("pointerdown", e => {
+  touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (touches.size === 1) startDrag(e.clientX, e.clientY); else drag = null;
+  canvas.setPointerCapture(e.pointerId); canvas.classList.add("dragging");
+});
+canvas.addEventListener("pointermove", e => {
+  mouse = [e.clientX, e.clientY];
+  if (touches.size === 2 && touches.has(e.pointerId)) {
+    // pinch: pan with the midpoint, zoom by the change in finger distance, about the midpoint
+    const [a, b] = [...touches.values()];
+    const d0 = Math.hypot(a[0] - b[0], a[1] - b[1]), m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    const [c, d] = [...touches.values()];
+    const d1 = Math.hypot(c[0] - d[0], c[1] - d[1]), m1 = [(c[0] + d[0]) / 2, (c[1] + d[1]) / 2];
+    view.ox += m1[0] - m0[0]; view.oy += m1[1] - m0[1];
+    zoomAt(m1[0], m1[1], d0 > 0 ? d1 / d0 : 1);
+    return;
+  }
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (drag) { view.ox = drag.ox + e.clientX - drag.x; view.oy = drag.oy + e.clientY - drag.y; clampView(); remember(); }
+});
+const endDrag = e => {
+  touches.delete(e.pointerId);
+  if (touches.size === 1) { const [p] = touches.values(); startDrag(...p); return; }   // a pinch ending in one finger keeps panning
+  drag = null; canvas.classList.remove("dragging");
+};
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+canvas.addEventListener("pointerleave", () => { if (!drag) mouse = null; });
+let settle = 0;
+addEventListener("resize", () => { fit(false); clearTimeout(settle); settle = setTimeout(fit, 150); });
+
+// after the home page's push-in (?out=1): hold on the verse, then glide back out to the whole picture; any input stops it
+const HOLD_MS = 4000, PULL_MS = 3500;
+let holdTimer = 0, glide = 0;
+const stopPull = () => { clearTimeout(holdTimer); cancelAnimationFrame(glide); };
+for (const type of ["wheel", "pointerdown"]) canvas.addEventListener(type, stopPull);
+addEventListener("resize", stopPull);
+function pullBack(index) {
+  holdTimer = setTimeout(() => {
+    const [c, r] = cellOf(index), tx = c + 0.5, ty = r + 0.5, A = CELL_ASPECT;
+    const z = view.zoom, xs = view.ox + tx * cellH() * A, ys = view.oy + ty * cellH();
+    view.zoom = 1; clampView();   // where the verse sits in the whole picture
+    const xe = view.ox + tx * cellH() * A, ye = view.oy + ty * cellH();
+    const start = performance.now();
+    // the push-in in reverse: zoom shrinks evenly in log space while the verse glides back to its place
+    (function step(now) {
+      const s = Math.min(1, (now - start) / PULL_MS), e = s * s * s * (s * (s * 6 - 15) + 10);
+      view.zoom = Math.pow(z, 1 - e);
+      view.ox = xs + (xe - xs) * e - tx * cellH() * A;
+      view.oy = ys + (ye - ys) * e - ty * cellH();
+      clampView(); remember();
+      if (s < 1) glide = requestAnimationFrame(step);
+    })(start);
+  }, HOLD_MS);
+}
+
+// ---------- frame ----------
+const lightIndex = PIECE.light ?? null;   // the procedural light sits on this letter; page centre if unset
+let t0 = 0, frames = 0;
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+
+function frame(now) {
+  if (lost) return;
+  // ?t= starts the clock later, for screenshots; reduced motion holds one moment, after the calm
+  const t = still.matches ? 30 : (now - t0) / 1000 + (Number(params.get("t")) || 0);
+  const [lc, lr] = lightIndex === null ? [lay.cols / 2 - 0.5, lay.rows / 2 - 0.5] : cellOf(lightIndex);
+  uploadMedia();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+  gl.viewport(0, 0, lay.cols, lay.rows);
+  gl.useProgram(sceneProg.p);
+  const su = name => sceneProg.u[name] ?? null;   // each scene uses its own subset of uniforms
+  gl.uniform2f(su("uGrid"), lay.cols, lay.rows);
+  gl.uniform1f(su("uAspect"), lay.cols * CELL_ASPECT / lay.rows);
+  gl.uniform2f(su("uLight"), (lc + 0.5) / lay.cols, (lr + 0.5) / lay.rows);
+  gl.uniform1f(su("uTime"), t);
+  if (media) {
+    const [w, h] = mediaSize(), page = lay.cols * CELL_ASPECT / lay.rows, pic = w / h || page;
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+    gl.uniform1i(su("uImage"), 4);
+    gl.uniform2f(su("uCover"), Math.min(1, page / pic), Math.min(1, pic / page));
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  if (!media || mediaUploaded) gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const dpr = canvas.width / innerWidth;
+  const ch = cellH() * dpr;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(letterProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textTex);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D_ARRAY, atlasTex);
+  gl.uniform1i(letterProg.u.uText, 0);
+  gl.uniform1i(letterProg.u.uScene, 1);
+  gl.uniform1i(letterProg.u.uAtlas, 2);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+  gl.uniform1i(letterProg.u.uBloom, 3);
+  gl.uniform2f(letterProg.u.uRes, canvas.width, canvas.height);
+  gl.uniform2f(letterProg.u.uOrigin, view.ox * dpr, view.oy * dpr);
+  gl.uniform2f(letterProg.u.uCell, ch * CELL_ASPECT, ch);
+  gl.uniform2f(letterProg.u.uGrid, lay.cols, lay.rows);
+  gl.uniform1i(letterProg.u.uN, N);
+  // small letters average out to thin coverage; lift them so the picture holds when zoomed out
+  const s = Math.min(1, Math.max(0, (cellH() - 6) / 24));
+  gl.uniform1f(letterProg.u.uGain, 2.3 + (1.1 - 2.3) * s * s * (3 - 2 * s));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // the place under the cursor, or at screen centre when the cursor is away
+  const m = markAt(...(mouse || [innerWidth / 2, innerHeight / 2]));
+  const place = notice || (m ? m[2] : "");
+  const count = `${visibleLetters().toLocaleString("en-US")}`;
+  if (hud.place.textContent !== place) {
+    hud.place.textContent = place;
+    hud.place.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 240, easing: "ease-out" });   // soft change, not a flicker
+  }
+  if (hud.count.textContent !== count) hud.count.textContent = count;
+  frames++;
+  requestAnimationFrame(frame);
+}
+
+// for scripts/check.mjs: the state a resize or fps check needs to read
+window.letterLight = () => ({ W: innerWidth, H: innerHeight, cols: lay.cols, rows: lay.rows, zoom: +view.zoom.toFixed(3),
+  cellH: +cellH().toFixed(2), place: hud.place.textContent, letters: visibleLetters(), frames, font: FONT, glyphs: GLYPHS });
+
+// the atlas needs the glyph font loaded first; a web font in a later fallback would otherwise draw as a system font
+Promise.all([400, 700].map(w => document.fonts.load(`${w} 40px "${FONT}"`, GLYPH_LIST.join("")))).catch(() => {}).then(() => {
+  atlasTex = buildAtlas();
+  t0 = performance.now();
+  fit();
+  // ?zoom=12&at=3:16 opens zoomed in on a mark (or a character offset), for screenshots and links
+  if (params.has("zoom")) {
+    zoomAt(0, 0, Number(params.get("zoom")));
+    centreOn(offsetOf(params.get("at") || ""));
+    remember();
+    if (params.has("out")) pullBack(offsetOf(params.get("at") || ""));
+  }
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revelation, in Letters</title>
+<meta name="description" content="The whole Revelation of St John, every letter of it, lit as one picture: the sun turned black as sackcloth, the moon to blood, the stars falling, and heaven rolled up like a scroll. Zoom in to read.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Revelation, in Letters">
+<meta property="og:description" content="The whole Revelation of St John, every letter of it, lit as one picture: the sun turned black as sackcloth, the moon to blood, the stars falling, and heaven rolled up like a scroll. Zoom in to read.">
+<!-- shortcut: relative og:image, which some link scrapers ignore; make it absolute once the domain is chosen -->
+<meta property="og:image" content="poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='24' font-size='24' text-anchor='middle' fill='%23e6d8b8'%3E%E2%9D%A7%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="../fonts/NimbusMonoPS-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/NimbusMonoPS-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  /* the atlas font ships with the site, so every OS draws the same letters (URW, AGPL-3.0; see fonts/README) */
+  @font-face { font-family: "Nimbus Mono PS"; font-weight: 400; src: url(../fonts/NimbusMonoPS-Regular.woff2) format("woff2"); }
+  @font-face { font-family: "Nimbus Mono PS"; font-weight: 700; src: url(../fonts/NimbusMonoPS-Bold.woff2) format("woff2"); }
+  :root { --ink: #e6d8b8; --dim: #a39579; --rule: #e6d8b8a0; --bg: #000; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+  /* the HUD is set like a printed page: a running head above, the place in the text below */
+  .hud { position: fixed; font: 400 15px/1 "EB Garamond", "P052", Palatino, Georgia, serif;
+         color: var(--ink); pointer-events: none; user-select: none; white-space: pre;
+         text-shadow: 0 0 6px #000, 0 0 12px #000; }
+  /* running head centred in spaced small capitals, over a fleuron between two hairlines */
+  #head { top: 14px; left: 50%; transform: translateX(-50%); padding-left: 0.26em; font-variant: all-small-caps;
+          letter-spacing: 0.26em; font-size: 15px; }
+  #mark { top: 33px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+          color: var(--ink); font-size: 14px; }
+  #mark i { width: 96px; height: 1px; background: linear-gradient(90deg, #0000, var(--rule)); box-shadow: 0 0 5px #000; }
+  #mark i:last-child { background: linear-gradient(90deg, var(--rule), #0000); }
+  #place { bottom: 14px; left: 20px; padding-bottom: 4px; border-bottom: 1px solid var(--rule); font-size: 19px;
+           font-style: italic; font-variant-numeric: oldstyle-nums; }
+  /* tabular figures, so the count does not shift sideways while it changes */
+  #count { bottom: 18px; right: 20px; color: var(--dim); font-size: 15px; font-variant-numeric: oldstyle-nums tabular-nums; }
+  #count:not(:empty)::after { content: " letters"; font-variant: all-small-caps; letter-spacing: 0.08em; }
+  /* dark margins top and bottom, so the HUD reads over bright light */
+  .margin { position: fixed; left: 0; right: 0; height: 64px; pointer-events: none; }
+  .margin.top { top: 0; background: linear-gradient(#000c, #0000); }
+  .margin.bottom { bottom: 0; background: linear-gradient(#0000, #000c); }
+  @media (max-width: 600px) { #mark i { width: 40px; } }
+  /* the text itself, for screen readers and search; the canvas is only a picture of it */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .poster { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="The Revelation of St John, its letters lit by a dusk that turns to night as the sun goes black and the moon to blood; the stars fall to the earth, the mountains shake, and heaven rolls up like a scroll to show a blinding light behind it, ringed with an emerald rainbow"></canvas>
+<article class="sr-only" id="text" aria-label="The Revelation of St John the Divine"></article>
+<div class="margin top"></div><div class="margin bottom"></div>
+<div class="hud" id="head"></div>
+<div class="hud" id="place"></div>
+<div class="hud" id="mark"><i></i>&#x2767;<i></i></div>
+<div class="hud" id="count"></div>
+<script src="text-data.js"></script>
+<script>
+"use strict";
+// PIECE comes from text-data.js (scripts/build_text.py): { title, text, marks: [[offset, key, label]], light, scene, font }
+const params = new URLSearchParams(location.search);
+const CHARS = Array.from(PIECE.text);   // by code point, so offsets match Python's
+const N = CHARS.length;
+const CELL_ASPECT = 0.6;          // cell width / height; glyph tiles are 36x60
+const TILE_W = 36, TILE_H = 60;
+const TEXT_W = 1024;              // text texture row width
+const MAX_CELL_CSS = 72;          // deepest zoom: cell height in CSS px
+const FONT = params.get("font") || PIECE.font || "Nimbus Mono PS";
+const GLYPH_SCALE = Number(params.get("scale")) || 0.95;  // < 1 leaves more space around each letter
+const SCENE_SRC = params.get("scene") || PIECE.scene || "";  // empty: the procedural scene below; else an image or video
+const IS_VIDEO = /\.(mp4|webm|mov|m4v|ogv)$/i.test(SCENE_SRC);
+const MARKS = PIECE.marks || [];
+
+// glyph table from the text itself: index 0 is blank, 1.. are the distinct characters
+const GLYPH_LIST = [...new Set(CHARS)].filter(ch => ch.trim()).sort();
+const GLYPHS = GLYPH_LIST.length;
+const GLYPH_OF = new Map(GLYPH_LIST.map((ch, i) => [ch, i + 1]));
+
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+const hud = { head: document.getElementById("head"), place: document.getElementById("place"), count: document.getElementById("count") };
+hud.head.textContent = PIECE.title || "";
+document.getElementById("text").textContent = PIECE.text;
+function fail(msg) { hud.place.textContent = msg; throw new Error(msg); }
+// a still of the piece instead of a black or frozen page
+function showStill(msg) {
+  canvas.replaceWith(Object.assign(document.createElement("img"), { src: "poster.jpg", alt: canvas.getAttribute("aria-label"), className: "poster" }));
+  hud.place.textContent = msg;
+}
+if (!gl) {
+  showStill("A still: this browser has WebGL2 turned off.\nRestart it, turn on hardware acceleration,\nor update it to see the scene move.");
+  throw new Error("no webgl2");
+}
+// a GPU reset (often the frame taking too long on a weak card) loses the context; Chrome then blocks WebGL here until a restart
+let lost = false;
+canvas.addEventListener("webglcontextlost", () => { lost = true; showStill("A still: the graphics card stopped drawing.\nRestart the browser to see the scene move."); });
+if (GLYPHS > 255 || GLYPHS * 2 > gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS)) fail(`too many distinct characters (${GLYPHS})`);
+
+// ---------- glyph atlas: one texture-array layer per glyph, regular then bold ----------
+function buildAtlas() {
+  const c = document.createElement("canvas");
+  c.width = TILE_W; c.height = TILE_H * GLYPHS * 2;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const family = `"${FONT}", ui-monospace, monospace`;
+  ctx.font = `400 100px ${family}`;
+  const size = GLYPH_SCALE * 100 * (TILE_W - 2) / ctx.measureText("M").width;  // advance fills the tile minus padding
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (let w = 0; w < 2; w++) {
+    ctx.font = `${w ? 700 : 400} ${size}px ${family}`;
+    for (let g = 0; g < GLYPHS; g++) {
+      ctx.fillText(GLYPH_LIST[g], TILE_W / 2, (w * GLYPHS + g) * TILE_H + TILE_H * 0.54);
+    }
+  }
+  const rgba = ctx.getImageData(0, 0, c.width, c.height).data;
+  const a = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < a.length; i++) a[i] = rgba[i * 4 + 3];
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R8, TILE_W, TILE_H, GLYPHS * 2, 0, gl.RED, gl.UNSIGNED_BYTE, a);
+  gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// ---------- text: one glyph index per character, row-major in a 1024-wide texture ----------
+function buildText() {
+  const h = Math.ceil(N / TEXT_W);
+  const bytes = new Uint8Array(TEXT_W * h);
+  for (let i = 0; i < N; i++) bytes[i] = GLYPH_OF.get(CHARS[i]) || 0;
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8UI, TEXT_W, h, 0, gl.RED_INTEGER, gl.UNSIGNED_BYTE, bytes);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return tex;
+}
+
+// ---------- shaders ----------
+const VS = `#version 300 es
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+// The scene: vec3 scene(vec2 cell, vec2 uv) returns linear light for one letter cell, HDR allowed
+// (the light core runs to 4+). uv is page-normalised, y down: row 0 is the first line of the text.
+// Write a new one per subject; see references/scenes.md.
+const PROCEDURAL_SCENE = `
+uniform float uAspect;   // page width / height
+uniform float uTime;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+float fbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+  return s;
+}
+// smoke or dust that rolls rather than slides: two layers drifting against each other through a slowly turning warp
+float fog(vec2 p, float t) {
+  vec2 w = vec2(fbm(p * 0.7 + vec2(t * 0.06, 0.0)), fbm(p * 0.7 + vec2(3.1, -t * 0.05)));
+  return 0.6 * fbm(p + 1.6 * w + vec2(t * 0.07, 0.0)) + 0.4 * fbm(p * 1.8 + w - vec2(t * 0.12, 0.0));
+}
+// how much of a layer whose top edge is at y covers this cell (y down), soft over about a cell
+float cover(float y, float top, float aa) { return smoothstep(top - aa, top + aa, y); }
+
+// 6:12 sits about a quarter of the way down the text, so the sun and moon hang at that height. Page-normalised, y down.
+const vec2 SUN = vec2(0.70, 0.22);
+const vec2 MOON = vec2(0.27, 0.28);
+const float BOT = 0.36;                      // heaven's lower edge, just above the peaks, where the rolls' ends show
+
+// the sixth seal (6:12-14), in seconds from the start
+const float ECL_A = 3.0, ECL_B = 11.0;       // "the sun became black as sackcloth of hair"
+const float BLOOD_A = 9.0, BLOOD_B = 16.0;   // "and the moon became as blood"
+const float FALL_A = 13.0, FALL_B = 34.0;    // "the stars of heaven fell unto the earth, even as a fig tree casteth her untimely figs"
+const float QUAKE_A = 21.0, QUAKE_B = 34.0;  // "a great earthquake ... every mountain and island were moved out of their places"
+const float ROLL_A = 30.0, ROLL_GO = 35.0, ROLL_LAND = 44.0;   // "the heaven departed as a scroll when it is rolled together"
+
+// the moment, shared by heaven, the light behind it and the land; set at the top of scene()
+float gT, gEcl, gBlood, gFall;
+
+// heaven as it hangs, at page point p (aspect-true x, y down): dusk until the sun goes black, then a red night.
+// The roll samples it at the point each patch of the sheet first hung, so the sun, moon and stars wind up with it.
+vec3 heaven(vec2 p) {
+  float x = p.x, y = p.y;
+  float hz = clamp(y / 0.58, 0.0, 1.0);
+  vec3 dusk = mix(vec3(0.09, 0.11, 0.30), vec3(1.0, 0.48, 0.20), hz * hz);
+  vec3 night = mix(vec3(0.025, 0.010, 0.045), vec3(0.50, 0.11, 0.06), hz * hz);
+  vec3 col = mix(dusk, night, gEcl);
+
+  // the sun: white-hot over the dusk; a dark disc slides across it until it is black, and a ragged corona of
+  // coarse strands, like hair, stands out round it
+  vec2 sv = vec2(x - SUN.x * uAspect, y - SUN.y);
+  float rs = length(sv);
+  float disc = smoothstep(0.057, 0.053, rs);
+  float covered = smoothstep(0.059, 0.055, length(sv - (1.0 - gEcl) * vec2(0.13, 0.02)));
+  col += (1.0 - gEcl) * vec3(1.0, 0.70, 0.40) * (0.9 * exp(-rs * 9.0) + 0.25 * exp(-rs * 2.5));
+  float ang = atan(sv.y, sv.x);
+  float strands = smoothstep(0.35, 0.85, fbm(vec2(ang * 9.0, rs * 4.0 - gT * 0.05)));   // fine across, long outward
+  float corona = smoothstep(0.75, 1.0, gEcl) * strands * exp(-max(rs - 0.056, 0.0) / 0.04) * step(0.054, rs);
+  col += corona * vec3(0.55, 0.48, 0.62) * 1.3;
+  col = mix(col, vec3(1.0, 0.92, 0.75) * 4.0, disc * (1.0 - covered));
+  col = mix(col, vec3(0.0), disc * covered);
+
+  // the moon: a pale disc in the dusk, darkening to blood
+  vec2 mv = vec2(x - MOON.x * uAspect, y - MOON.y);
+  float rm = length(mv);
+  col += gBlood * vec3(0.95, 0.10, 0.04) * (0.40 * exp(-rm * 13.0) + 0.14 * exp(-rm * 3.0));
+  float seas = 0.7 + 0.3 * smoothstep(0.35, 0.65, fbm(mv * 60.0 + 5.0));
+  vec3 moonC = mix(vec3(0.80, 0.82, 0.90) * 0.6, vec3(1.0, 0.13, 0.05) * 1.6, gBlood);
+  col = mix(col, moonC * seas, smoothstep(0.040 + 0.002, 0.040 - 0.002, rm));
+
+  // stars, fixed to the sheet: out as the dark comes; the ones that fall leave the sky emptier
+  vec2 sc = floor(vec2(x / uAspect * uGrid.x, y * uGrid.y));
+  float h = hash(sc);
+  if (h > 0.982 && hash(sc + 9.0) > 0.8 * gFall) {
+    float mag = pow(hash(sc + 3.1), 5.0);
+    float tw = 0.75 + 0.25 * sin(gT * (0.6 + 1.5 * fract(h * 53.0)) + h * 300.0);
+    col += gEcl * mix(vec3(0.85, 0.82, 1.0), vec3(1.0, 0.75, 0.6), fract(h * 91.0)) * (0.08 + 1.8 * mag) * tw * (1.0 - hz)
+         * smoothstep(0.075, 0.12, rs) * (1.0 - smoothstep(0.0, 0.1, gBlood * exp(-rm * 8.0)));
+  }
+
+  // cloud, rolling: lit gold from below at dusk, red rims at night
+  float cl = fog(vec2(x * 1.2, y * 5.0), gT * 0.6);
+  float cloud = smoothstep(0.45, 0.75, cl) * (1.0 - 0.5 * hz);
+  float rim = cloud * (1.0 - smoothstep(0.58, 0.88, cl));
+  col = mix(col, mix(vec3(0.20, 0.10, 0.16), vec3(0.04, 0.012, 0.025), gEcl), 0.8 * cloud);
+  col += rim * mix(vec3(1.0, 0.55, 0.25) * 0.5, vec3(1.0, 0.22, 0.08) * (0.15 + 1.2 * gBlood * exp(-rm * 8.0)), gEcl);
+  return col;
+}
+
+// what was behind heaven: "a throne was set in heaven ... and there was a rainbow round about the throne, in sight
+// like unto an emerald" (4:2-3). Light from above the page, in rays that turn slowly, a ring of emerald round it.
+vec3 glory(vec2 p) {
+  vec2 g = vec2(p.x - 0.5 * uAspect, p.y + 0.12);
+  float r = length(g);
+  float ang = atan(g.x, g.y);
+  float breath = 1.0 + 0.06 * sin(gT * 0.6);
+  // a dozen broad rays turning slowly, the old painters' glory: big shapes, so they read at any zoom
+  float rays = pow(0.5 + 0.5 * cos(ang * 12.0 + gT * 0.06), 3.0);
+  float pulse = smoothstep(0.55, 1.0, sin(r * 22.0 - gT * 1.4));   // light welling out from the throne in slow waves
+  vec3 col = vec3(0.09, 0.06, 0.035) + vec3(1.0, 0.80, 0.48) * (0.28 * exp(-r * 1.5) + 0.65 * rays * exp(-r * 0.8)
+           + 0.18 * pulse * exp(-r * 1.2)) * breath;
+  col += vec3(1.0, 0.95, 0.85) * 3.0 * exp(-r * r / 0.010) * breath;
+  float bow = (r - 0.40) / 0.03;
+  col += vec3(0.15, 0.95, 0.45) * 0.55 * exp(-bow * bow);
+  return col;
+}
+
+vec3 scene(vec2 cell, vec2 uv) {
+  float t = uTime;
+  gT = t;
+  gEcl = smoothstep(ECL_A, ECL_B, t);
+  gBlood = smoothstep(BLOOD_A, BLOOD_B, t);
+  gFall = smoothstep(FALL_A, FALL_B, t);
+  float aa = 1.0 / uGrid.y;
+  vec2 perCell = vec2(uGrid.x / uAspect, uGrid.y);   // cells per unit, across and down
+
+  // the rolls' progress: the edges curl slowly, then heaven lets go and rolls in faster and faster from both sides;
+  // the two rolls meet in the middle with a jolt, rebound a little and settle together
+  float curl = smoothstep(ROLL_A, ROLL_GO, t);
+  float u = clamp((t - ROLL_GO) / (ROLL_LAND - ROLL_GO), 0.0, 1.0);
+  float rollP = 0.05 * curl + 0.95 * u * u * u;
+  float landed = max(t - ROLL_LAND, 0.0);
+  float bounce = step(ROLL_LAND, t) * 0.025 * exp(-landed * 2.5) * abs(sin(landed * 6.0));
+
+  // the earthquake shakes the whole page, building and dying away; the rolls' meeting jolts it once more
+  float quake = smoothstep(QUAKE_A, QUAKE_A + 2.5, t) * (1.0 - smoothstep(QUAKE_B - 4.0, QUAKE_B, t))
+              + step(ROLL_LAND, t) * 0.8 * exp(-landed * 3.0);
+  vec2 shake = quake * vec2(0.006, 0.009) * (vec2(noise(vec2(t * 13.0, 1.0)), noise(vec2(t * 11.0, 7.0))) * 2.0 - 1.0);
+  float x = uv.x * uAspect + shake.x;        // aspect-true, so the sun and moon stay round on any screen
+  float y = uv.y + shake.y;
+
+  // heaven rolled together like a scroll: it rolls up from both sides at once, two rolls closing in from the edges
+  // and uncovering the light, until they meet in the middle as one closed scroll. The rolls lie in front of the sheet
+  // and show its back, pale as parchment. The sheet hangs down to BOT, so the rolls' spiral ends show there.
+  float mid = 0.5 * uAspect;
+  float Rend = 0.02 + 0.09 * min(uAspect / 1.78, 1.0);   // narrower screens have less sheet to take up
+  float R = (0.02 + (Rend - 0.02) * rollP) * (1.0 + 0.16 * (fbm(vec2(y * 2.5, 4.0)) - 0.5));   // fuller here and there, as rolled cloth is
+  float xL = mix(-0.012, mid - R, rollP) - bounce;       // the left roll's axis, closing until it touches the right; that one mirrors it
+  bool left = x < mid;
+  float xC = left ? xL : 2.0 * mid - xL;
+  float side = left ? 1.0 : -1.0;            // the outer side, toward the light, is s = -side
+  float s = (x - xC) / R;
+  float capH = 0.3 * R;                      // the spiral end, an ellipse seen a little from below
+  float yb = BOT + capH * sqrt(max(1.0 - s * s, 0.0));
+  float reveal = smoothstep(ROLL_GO, ROLL_LAND + 3.0, t);
+  float outer = left ? (xC - R) - x : x - (xC + R);         // how far past the roll's outer edge, into the light
+  float inner = left ? x - (xC + R) : (xC - R) - x;          // how far past its inner edge, onto the sheet still hanging
+  vec3 col;
+  bool onRoll = t >= ROLL_A && abs(s) < 1.0 && y < yb;
+  if (!onRoll && (t < ROLL_A || inner > 0.0 || y >= BOT)) {
+    // the sheet still hanging between the rolls, and the haze below heaven's edge, lit from above once it is uncovered
+    col = heaven(vec2(x, y)) + step(inner, 0.0) * reveal * vec3(0.30, 0.20, 0.10) * exp(-max(y - BOT, 0.0) / 0.05);
+    col *= 1.0 - 0.8 * exp(-max(inner, 0.0) / 0.006) * step(ROLL_A, t) * step(y, BOT) * step(0.0, inner);   // where the roll lifts off
+  } else if (onRoll) {
+    float e = s * s + (y - BOT) * (y - BOT) / (capH * capH);
+    if (e < 1.0) {
+      // the end of the roll: the sheet's edge wound in a spiral, in shadow, lit a little from the red haze below
+      float rho = sqrt(e);
+      float th = atan((y - BOT) / capH, s) * side;
+      float turns = 3.0 + 9.0 * rollP;
+      float spiral = fract(rho * turns - th / 6.2832);
+      float groove = 1.0 - smoothstep(0.0, 0.22, spiral);
+      col = vec3(0.42, 0.37, 0.30) * (0.30 + 0.30 * rho) * (1.0 - 0.65 * groove) + vec3(0.22, 0.07, 0.04) * (0.5 + 0.5 * rho);
+      col *= smoothstep(0.0, 0.25, rho);     // the dark core
+    } else {
+      float v = s * side;                    // -1 at the outer, lit edge; +1 at the inner, toward the night
+      float facing = sqrt(max(1.0 - s * s, 0.0));
+      // rolling without slipping: the surface turns as the roll moves in, so a point on its face moves at twice the
+      // roll's speed. m is the distance along the sheet's back, fixed to the sheet, not the screen.
+      float m = R * asin(clamp(s, -1.0, 1.0)) - xC;
+      vec3 parch = vec3(0.60, 0.56, 0.48) * (0.85 + 0.3 * fbm(vec2(y * 3.0, m * 30.0)));   // fibres
+      // "a book written within and on the backside" (5:1): lines of writing across the back, turning with the roll
+      float row = fract(y * 30.0);
+      float words = smoothstep(0.35, 0.55, fbm(vec2(m * 30.0, floor(y * 30.0))));
+      float ink = smoothstep(0.25, 0.38, row) * smoothstep(0.75, 0.62, row) * words;
+      parch = mix(parch, vec3(0.18, 0.10, 0.07), 0.45 * ink * facing);
+      // shaded as a cylinder lit from the uncovered light outside it: the light side, a specular streak, the core
+      // shadow past the middle, then the night's red light thrown back onto the inner side
+      float lit = 0.08 + 0.92 * pow(clamp(0.55 - 0.75 * v, 0.0, 1.0), 1.5) * (0.3 + 0.7 * facing);
+      float core = exp(-(v - 0.45) * (v - 0.45) / 0.05);
+      col = parch * lit * (1.0 - 0.75 * core);
+      float spec = (v + 0.55) / 0.10;
+      col += vec3(1.0, 0.94, 0.80) * 0.75 * exp(-spec * spec);
+      col += vec3(1.0, 0.85, 0.55) * 0.9 * exp(-(v + 1.0) * 8.0);   // a hot line where the light grazes its edge
+      col += vec3(0.42, 0.13, 0.07) * smoothstep(0.6, 0.97, v) * (1.0 - core);
+    }
+  } else {
+    col = glory(vec2(x, y)) + vec3(1.0, 0.85, 0.55) * 0.25 * exp(-max(outer, 0.0) / 0.06);   // light welling past the roll
+    col = mix(col, heaven(vec2(x, y)) + vec3(0.30, 0.20, 0.10), smoothstep(BOT - 0.07, BOT, y));   // pouring down into the haze, no hard edge
+  }
+
+  // the stars falling: a few, then many, blown sideways in the wind like figs off a shaken tree. Each falls from
+  // the sky to the land and strikes it with a flash.
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float period = 1.3 + 0.37 * fi;
+    float mi = floor(t / period), mt = t - mi * period;
+    if (hash(vec2(mi, 4.0 + fi)) > 1.0 - 0.95 * smoothstep(FALL_A, FALL_A + 6.0, mi * period)
+        * (1.0 - smoothstep(FALL_B - 6.0, FALL_B, mi * period))) {
+      vec2 start = vec2((0.05 + 0.9 * hash(vec2(mi, 1.0 + fi))) * uAspect, 0.02 + 0.25 * hash(vec2(mi, 2.0 + fi)));
+      vec2 vel = vec2(0.30 + 0.25 * hash(vec2(mi, 3.0 + fi)), 0.75);   // per second: blown east as it falls
+      float life = (0.64 + 0.2 * hash(vec2(mi, 8.0 + fi)) - start.y) / vel.y;   // until it reaches the plain
+      float tt = min(mt, life);
+      vec2 head = start + vel * tt + vec2(0.12, 0.0) * tt * tt;       // the gust bends the path
+      vec2 dir = normalize(vel + vec2(0.24, 0.0) * tt);
+      vec2 p = (vec2(x, y) - head) * perCell;   // in cells
+      vec2 dc = dir * perCell / length(dir * perCell);
+      float back = -dot(p, dc), side = abs(p.x * dc.y - p.y * dc.x);
+      float burning = step(mt, life) * smoothstep(0.0, 0.15, mt);
+      col += burning * vec3(1.0, 0.88, 0.70) * (2.2 * exp(-dot(p, p) * 0.5)
+           + 1.2 * exp(-side * side * 1.5) * step(0.0, back) * exp(-max(back, 0.0) / 14.0));
+      // where it strikes: a flash, fading over a second and a half
+      float since = mt - life;
+      if (since > 0.0) {
+        vec2 q = (vec2(x, y) - head) * vec2(1.0, 2.5);
+        col += vec3(1.0, 0.75, 0.45) * exp(-since * 2.5) * (1.0 - mt / period) * (2.0 * exp(-dot(q, q) / 0.0004) + 0.5 * exp(-length(q) / 0.05));
+      }
+    }
+  }
+
+  // the land. Its light: the dusk from the west, then the red night, then the light from behind heaven, from above
+  vec3 duskL = vec3(0.35, 0.18, 0.10), nightL = vec3(0.12, 0.035, 0.03), gloryL = vec3(0.40, 0.29, 0.15);
+  vec3 L = mix(mix(duskL, nightL, gEcl), gloryL, reveal);
+  float tex = 0.75 + 0.5 * fbm(vec2(x * 14.0, y * 40.0));
+  float moved = smoothstep(QUAKE_A, QUAKE_B, t);   // the mountains slide out of their places and settle lower
+
+  // the far range: ridged peaks, a rim of light along their crests
+  float yFar = 0.57 - (0.24 - 0.07 * moved) * pow(1.0 - abs(2.0 * fbm(vec2(x * 2.2 + 0.35 * moved, 3.0)) - 1.0), 2.5);
+  float far = cover(y, yFar, aa);
+  float gully = 0.6 + 0.8 * fbm(vec2(x * 16.0 + 0.35 * moved * 7.0, y * 5.0));
+  vec3 farC = L * 0.30 * tex * gully + L * 1.1 * exp(-max(y - yFar, 0.0) / 0.008);
+  col = mix(col, farC, far);
+  // dust off the falling mountains, rolling up their slopes and hanging after
+  float dust = smoothstep(0.40, 0.70, fog(vec2(x * 2.5, y * 8.0), t)) * exp(-pow(abs(y - yFar + 0.03) / 0.07, 2.0));
+  col += dust * L * 0.9 * smoothstep(QUAKE_A, QUAKE_A + 4.0, t) * (1.0 - 0.7 * smoothstep(QUAKE_B, QUAKE_B + 20.0, t));
+
+  // the plain: rolling ground in perspective, and the towns on it, their lamps lit as the dark comes on
+  float yPlain = 0.62 - 0.025 * fbm(vec2(x * 1.6, 11.0));
+  float dy = max(y - 0.54, 0.01);
+  vec2 gp = vec2((x - 0.5 * uAspect) / dy, 1.0 / dy);   // ground-plane coordinates, so swells shrink with distance
+  float roll = fbm(gp * vec2(0.35, 0.5));
+  vec3 plainC = L * (0.45 + 0.7 * roll) * tex * 0.55 + L * 0.5 * exp(-max(y - yPlain, 0.0) / 0.04);
+  float towns = smoothstep(0.55, 0.70, fbm(gp * vec2(0.6, 0.9) + 4.0));
+  float w = hash(cell + 11.3);
+  plainC += vec3(1.0, 0.65, 0.30) * step(1.0 - 0.12 * towns, w) * (0.8 + 0.2 * sin(t * (0.4 + w) + w * 40.0)) * 0.9
+          * smoothstep(ECL_A + 2.0, ECL_B, t) * (1.0 - 0.6 * reveal);
+  // once the light is out, shafts of it travel slowly over the plain
+  plainC += gloryL * 0.6 * reveal * smoothstep(0.45, 0.72, fbm(vec2(x * 2.0 - t * 0.08, y * 3.0 + t * 0.02)));
+  col = mix(col, plainC, cover(y, yPlain, aa));
+
+  // the near ground: a dark broken ridge between us and the plain, its crest catching the light
+  float yNear = 0.90 - 0.06 * fbm(vec2(x * 2.2, 19.0)) - 0.03 * smoothstep(0.5, 0.8, fbm(vec2(x * 9.0, 5.0)));
+  vec3 nearC = L * 0.22 * (0.5 + fbm(vec2(x * 20.0, y * 12.0))) + L * 0.8 * exp(-max(y - yNear, 0.0) / 0.008);
+  col = mix(col, nearC, cover(y, yNear, aa));
+  return col;
+}`;
+
+// A picture as the scene: cover-fit to the page, and lifted by the inverse of the tone map below,
+// so it comes out as itself and its highlights still feed the bloom.
+const IMAGE_SCENE = `
+uniform sampler2D uImage;
+uniform vec2 uCover;     // image uv scale for a cover fit
+vec3 scene(vec2 cell, vec2 uv) {
+  vec3 c = texture(uImage, (uv - 0.5) * uCover + 0.5).rgb;
+  float m = min(max(c.r, max(c.g, c.b)), 0.985);
+  return c * (-log(1.0 - m) / 1.8) / max(m, 1e-4);
+}`;
+
+// Pass 1: the scene, one texel per letter cell, plus its bright part for the bloom.
+const sceneFS = body => `#version 300 es
+precision highp float;
+uniform vec2 uGrid;      // cols, rows
+layout(location = 0) out vec4 o;
+layout(location = 1) out vec4 bright;   // only the bright part, mipmapped into bloom
+${body}
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy);
+  vec3 col = scene(cell, (cell + 0.5) / uGrid);
+  // soft tone map on the brightest channel, so bright colour stays colour instead of washing to white
+  float m = max(col.r, max(col.g, col.b));
+  float mapped = 1.0 - exp(-m * 1.8);
+  col *= mapped / max(m, 1e-4);
+  col = mix(col, vec3(mapped), smoothstep(1.2, 5.0, m));   // white-hot: the hottest light loses its colour
+  o = vec4(col, 1.0);
+  bright = vec4(col * smoothstep(0.45, 0.9, mapped), 1.0);
+}`;
+
+// Pass 2: letters. Each screen pixel finds its cell, its character, and the scene colour of that cell.
+const LETTER_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+precision mediump sampler2DArray;
+uniform usampler2D uText;
+uniform sampler2D uScene;
+uniform sampler2D uBloom;
+uniform sampler2DArray uAtlas;
+uniform vec2 uRes;       // device px
+uniform vec2 uOrigin;    // page top-left, device px, y down
+uniform vec2 uCell;      // cell size, device px
+uniform vec2 uGrid;
+uniform int uN;
+uniform float uGain;
+out vec4 o;
+
+// past 1.0 a colour runs to white instead of clipping, so overexposed light reads hot, not flat
+vec3 shoulder(vec3 c) {
+  float m = max(c.r, max(c.g, c.b));
+  return mix(c / max(m, 1.0), vec3(1.0), clamp((m - 1.0) * 0.5, 0.0, 0.85));
+}
+
+void main() {
+  vec2 fc = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec2 cf = (fc - uOrigin) / uCell;
+  // derivatives before any early return: a quad with a returned pixel gives garbage gradients,
+  // which pick a coarse mip and draw faint bars along cell edges
+  vec2 dx = dFdx(cf), dy = dFdy(cf);
+  o = vec4(0.0, 0.0, 0.0, 1.0);
+  if (cf.x < 0.0 || cf.y < 0.0 || cf.x >= uGrid.x || cf.y >= uGrid.y) return;
+  ivec2 cell = ivec2(cf);
+  int idx = cell.y * int(uGrid.x) + cell.x;
+  if (idx >= uN) return;
+  uint code = texelFetch(uText, ivec2(idx % ${TEXT_W}, idx / ${TEXT_W}), 0).r;
+  // everything reads the scene filtered across cells, so colour, fill and weight blend with no cell steps
+  vec2 uv = cf / uGrid;
+  vec3 scene = texture(uScene, uv).rgb;
+  float lum = dot(scene, vec3(0.2126, 0.7152, 0.0722));
+  float peak = max(scene.r, max(scene.g, scene.b));
+  // background: black in the dark, the scene itself where it is bright (a sun reads nearly solid)
+  // bloom: the bright part blurred at several radii, so light spills past its edge onto the dark and the letters
+  vec3 bloom = 0.4 * textureLod(uBloom, uv, 1.5).rgb + 0.6 * textureLod(uBloom, uv, 3.0).rgb
+             + 0.8 * textureLod(uBloom, uv, 4.5).rgb + 1.0 * textureLod(uBloom, uv, 6.0).rgb;
+  vec3 bg = shoulder(scene * smoothstep(0.04, 0.7, lum) + bloom * 0.5);
+  o = vec4(bg, 1.0);                         // spaces show the background, so words sit in light, not holes
+  if (code == 0u) return;
+
+  // gradients of the continuous cell coordinate keep mip selection stable across cell edges
+  vec2 g = fract(cf);
+  float layer = float(code - 1u);
+  float reg  = textureGrad(uAtlas, vec3(g, layer), dx, dy).r;
+  float bold = textureGrad(uAtlas, vec3(g, layer + ${GLYPHS}.0), dx, dy).r;
+  float cov = mix(reg, bold, smoothstep(0.08, 0.4, lum));    // hotter light, heavier letter
+
+  // ink: the scene lifted, with a floor in the scene's own hue so letters stay readable in the dark
+  vec3 ink = shoulder(scene * uGain + 0.24 * scene / max(peak, 0.03) + bloom);
+  vec3 lit = 1.0 - (1.0 - bg) * (1.0 - ink);                 // screen over the background: bright letters on bright fill stay faint
+  o = vec4(mix(bg, lit, cov), 1.0);
+}`;
+
+function compile(fsSrc) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fsSrc]]) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) {
+    const name = gl.getActiveUniform(p, i).name;
+    u[name] = gl.getUniformLocation(p, name);
+  }
+  return { p, u };
+}
+
+const sceneProg = compile(sceneFS(SCENE_SRC ? IMAGE_SCENE : PROCEDURAL_SCENE));
+const letterProg = compile(LETTER_FS);
+const textTex = buildText();
+let atlasTex = null;
+gl.bindVertexArray(gl.createVertexArray());
+
+// ---------- picture scene: an image or a looping video ----------
+let media = null, mediaTex = null, mediaUploaded = false, notice = "";
+if (SCENE_SRC) {
+  media = document.createElement(IS_VIDEO ? "video" : "img");
+  if (IS_VIDEO) Object.assign(media, { muted: true, loop: true, playsInline: true, autoplay: true });
+  media.src = SCENE_SRC;
+  media.onerror = () => { notice = `could not load ${SCENE_SRC}`; };
+  mediaTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);  // a big picture shrinks to a few hundred cells
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+const mediaSize = () => IS_VIDEO ? [media.videoWidth, media.videoHeight] : [media.naturalWidth, media.naturalHeight];
+const mediaReady = () => IS_VIDEO ? media.readyState >= 2 : media.complete && media.naturalWidth > 0;
+
+function uploadMedia() {
+  if (!media || !mediaReady() || (mediaUploaded && !IS_VIDEO)) return;
+  gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+  try {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, media);
+  } catch (e) {
+    // file:// pictures are cross-origin to WebGL; serve the folder instead
+    media = null;
+    fail("picture blocked: serve this folder (python3 -m http.server) instead of opening the file");
+  }
+  gl.generateMipmap(gl.TEXTURE_2D);
+  mediaUploaded = true;
+}
+
+// ---------- layout: the whole text exactly once at zoom 1 ----------
+const lay = {};      // cols, rows, fitCell (CSS px cell height at zoom 1)
+const view = { zoom: 1, ox: 0, oy: 0 };   // page top-left in CSS px
+// what the reader chose: the letter at screen centre and the cell size (null = fitted). Only zoom and pan change it,
+// so any run of resizes (an animated F11) lands on the same view
+const want = { anchor: 0, cell: null };
+let sceneTex = null, bloomTex = null, sceneFbo = null;
+
+// reflow = false keeps the columns, so the text does not reshuffle on every step of a window animation
+function fit(reflow = true) {
+  const W = innerWidth, H = innerHeight;
+  const cols = reflow || !lay.cols ? Math.max(1, Math.round(Math.sqrt(N * W / (H * CELL_ASPECT)))) : lay.cols;
+  const rows = Math.ceil(N / cols);
+  const regrid = cols !== lay.cols;
+  Object.assign(lay, { cols, rows, fitCell: Math.min(W / (cols * CELL_ASPECT), H / rows) });
+
+  const dpr = Math.min(devicePixelRatio || 1, 1.5);   // weak GPUs hang at full high-DPI resolution
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  view.zoom = want.cell ? Math.min(maxZoom(), Math.max(1, want.cell / lay.fitCell)) : 1;
+  centreOn(want.anchor);
+  if (!regrid) return;
+
+  for (const t of [sceneTex, bloomTex]) if (t) gl.deleteTexture(t);
+  [sceneTex, bloomTex] = [gl.LINEAR, gl.LINEAR_MIPMAP_LINEAR].map(minFilter => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);   // filtered across cells, so the picture has no cell steps
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  });
+  sceneFbo = sceneFbo || gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTex, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, bloomTex, 0);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// after the reader zooms or pans: remember the centre letter and the cell size
+let urlTimer = 0;
+function remember() {
+  const c = Math.floor((innerWidth / 2 - view.ox) / (cellH() * CELL_ASPECT)), r = Math.floor((innerHeight / 2 - view.oy) / cellH());
+  want.anchor = Math.min(N - 1, Math.max(0, r * lay.cols + Math.min(lay.cols - 1, Math.max(0, c))));
+  want.cell = view.zoom > 1 ? cellH() : null;
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(shareUrl, 300);
+}
+
+// the address bar always holds the current view, so it can be copied and shared
+function shareUrl() {
+  const q = new URLSearchParams(location.search);
+  q.delete("out");   // the pull-back plays once, not on a reload of this URL
+  const m = markAt(innerWidth / 2, innerHeight / 2);
+  if (view.zoom > 1.05 && m) { q.set("zoom", view.zoom.toFixed(1)); q.set("at", m[1]); }
+  else { q.delete("zoom"); q.delete("at"); }
+  const s = q.toString().replace(/%3A/g, ":");   // keep 5:14 readable in the address bar
+  history.replaceState(null, "", s ? `?${s}` : location.pathname);
+}
+
+function centreOn(index) {
+  const [c, r] = cellOf(Math.min(N - 1, Math.max(0, index)));
+  view.ox = innerWidth / 2 - (c + 0.5) * cellH() * CELL_ASPECT;
+  view.oy = innerHeight / 2 - (r + 0.5) * cellH();
+  clampView();
+}
+const maxZoom = () => Math.max(1, MAX_CELL_CSS / lay.fitCell);
+
+const cellH = () => lay.fitCell * view.zoom;
+const pageW = () => lay.cols * cellH() * CELL_ASPECT;
+const pageH = () => lay.rows * cellH();
+
+function clampView() {
+  for (const [k, page, screen] of [["ox", pageW(), innerWidth], ["oy", pageH(), innerHeight]]) {
+    view[k] = page <= screen ? (screen - page) / 2 : Math.min(0, Math.max(screen - page, view[k]));
+  }
+}
+
+function zoomAt(mx, my, factor) {
+  const z = Math.min(maxZoom(), Math.max(1, view.zoom * factor));
+  const k = z / view.zoom;
+  view.ox = mx - (mx - view.ox) * k;
+  view.oy = my - (my - view.oy) * k;
+  view.zoom = z;
+  clampView();
+  remember();
+}
+
+// a mark key ("8:12", "3") or a plain character offset
+function offsetOf(at) {
+  const m = MARKS.find(e => e[1] === at);
+  return m ? m[0] : Math.max(0, Math.min(N - 1, Number(at) || 0));
+}
+
+function cellOf(index) { return [index % lay.cols, Math.floor(index / lay.cols)]; }
+
+// letters (characters, spaces included, like the zoom-1 total) whose cells touch the screen
+function visibleLetters() {
+  const cw = cellH() * CELL_ASPECT, chh = cellH();
+  const c0 = Math.max(0, Math.floor(-view.ox / cw)), c1 = Math.min(lay.cols, Math.ceil((innerWidth - view.ox) / cw));
+  const r0 = Math.max(0, Math.floor(-view.oy / chh)), r1 = Math.min(lay.rows, Math.ceil((innerHeight - view.oy) / chh));
+  if (c1 <= c0 || r1 <= r0) return 0;
+  const lastLen = N - (lay.rows - 1) * lay.cols;           // the last row is only partly filled
+  return (r1 - r0) * (c1 - c0) - (r1 === lay.rows ? Math.max(0, c1 - Math.max(c0, lastLen)) : 0);
+}
+
+// the mark (verse, paragraph) under a screen point
+function markAt(mx, my) {
+  const c = Math.floor((mx - view.ox) / (cellH() * CELL_ASPECT));
+  const r = Math.floor((my - view.oy) / cellH());
+  if (!MARKS.length || c < 0 || r < 0 || c >= lay.cols || r >= lay.rows) return null;
+  const i = r * lay.cols + c;
+  if (i >= N || i < MARKS[0][0]) return null;
+  let lo = 0, hi = MARKS.length - 1;     // last mark starting at or before i
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (MARKS[m][0] <= i) lo = m; else hi = m - 1; }
+  return MARKS[lo];
+}
+
+// ---------- input ----------
+let mouse = null, drag = null;
+const touches = new Map();   // pointerId -> [x, y]; two at once is a pinch
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015)));
+}, { passive: false });
+const startDrag = (x, y) => { drag = { x, y, ox: view.ox, oy: view.oy }; };
+canvas.addEventListener("pointerdown", e => {
+  touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (touches.size === 1) startDrag(e.clientX, e.clientY); else drag = null;
+  canvas.setPointerCapture(e.pointerId); canvas.classList.add("dragging");
+});
+canvas.addEventListener("pointermove", e => {
+  mouse = [e.clientX, e.clientY];
+  if (touches.size === 2 && touches.has(e.pointerId)) {
+    // pinch: pan with the midpoint, zoom by the change in finger distance, about the midpoint
+    const [a, b] = [...touches.values()];
+    const d0 = Math.hypot(a[0] - b[0], a[1] - b[1]), m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    const [c, d] = [...touches.values()];
+    const d1 = Math.hypot(c[0] - d[0], c[1] - d[1]), m1 = [(c[0] + d[0]) / 2, (c[1] + d[1]) / 2];
+    view.ox += m1[0] - m0[0]; view.oy += m1[1] - m0[1];
+    zoomAt(m1[0], m1[1], d0 > 0 ? d1 / d0 : 1);
+    return;
+  }
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, [e.clientX, e.clientY]);
+  if (drag) { view.ox = drag.ox + e.clientX - drag.x; view.oy = drag.oy + e.clientY - drag.y; clampView(); remember(); }
+});
+const endDrag = e => {
+  touches.delete(e.pointerId);
+  if (touches.size === 1) { const [p] = touches.values(); startDrag(...p); return; }   // a pinch ending in one finger keeps panning
+  drag = null; canvas.classList.remove("dragging");
+};
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+canvas.addEventListener("pointerleave", () => { if (!drag) mouse = null; });
+let settle = 0;
+addEventListener("resize", () => { fit(false); clearTimeout(settle); settle = setTimeout(fit, 150); });
+
+// after the home page's push-in (?out=1): hold on the verse, then glide back out to the whole picture; any input stops it
+const HOLD_MS = 4000, PULL_MS = 3500;
+let holdTimer = 0, glide = 0;
+const stopPull = () => { clearTimeout(holdTimer); cancelAnimationFrame(glide); };
+for (const type of ["wheel", "pointerdown"]) canvas.addEventListener(type, stopPull);
+addEventListener("resize", stopPull);
+function pullBack(index) {
+  holdTimer = setTimeout(() => {
+    const [c, r] = cellOf(index), tx = c + 0.5, ty = r + 0.5, A = CELL_ASPECT;
+    const z = view.zoom, xs = view.ox + tx * cellH() * A, ys = view.oy + ty * cellH();
+    view.zoom = 1; clampView();   // where the verse sits in the whole picture
+    const xe = view.ox + tx * cellH() * A, ye = view.oy + ty * cellH();
+    const start = performance.now();
+    // the push-in in reverse: zoom shrinks evenly in log space while the verse glides back to its place
+    (function step(now) {
+      const s = Math.min(1, (now - start) / PULL_MS), e = s * s * s * (s * (s * 6 - 15) + 10);
+      view.zoom = Math.pow(z, 1 - e);
+      view.ox = xs + (xe - xs) * e - tx * cellH() * A;
+      view.oy = ys + (ye - ys) * e - ty * cellH();
+      clampView(); remember();
+      if (s < 1) glide = requestAnimationFrame(step);
+    })(start);
+  }, HOLD_MS);
+}
+
+// ---------- frame ----------
+const lightIndex = PIECE.light ?? null;   // the procedural light sits on this letter; page centre if unset
+let t0 = 0, frames = 0;
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+
+function frame(now) {
+  if (lost) return;
+  // ?t= starts the clock later, for screenshots; reduced motion holds the end, heaven rolled up and the light behind it
+  const t = still.matches ? 75 : (now - t0) / 1000 + (Number(params.get("t")) || 0);
+  const [lc, lr] = lightIndex === null ? [lay.cols / 2 - 0.5, lay.rows / 2 - 0.5] : cellOf(lightIndex);
+  uploadMedia();
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+  gl.viewport(0, 0, lay.cols, lay.rows);
+  gl.useProgram(sceneProg.p);
+  const su = name => sceneProg.u[name] ?? null;   // each scene uses its own subset of uniforms
+  gl.uniform2f(su("uGrid"), lay.cols, lay.rows);
+  gl.uniform1f(su("uAspect"), lay.cols * CELL_ASPECT / lay.rows);
+  gl.uniform2f(su("uLight"), (lc + 0.5) / lay.cols, (lr + 0.5) / lay.rows);
+  gl.uniform1f(su("uTime"), t);
+  if (media) {
+    const [w, h] = mediaSize(), page = lay.cols * CELL_ASPECT / lay.rows, pic = w / h || page;
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, mediaTex);
+    gl.uniform1i(su("uImage"), 4);
+    gl.uniform2f(su("uCover"), Math.min(1, page / pic), Math.min(1, pic / page));
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  if (!media || mediaUploaded) gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const dpr = canvas.width / innerWidth;
+  const ch = cellH() * dpr;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(letterProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textTex);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D_ARRAY, atlasTex);
+  gl.uniform1i(letterProg.u.uText, 0);
+  gl.uniform1i(letterProg.u.uScene, 1);
+  gl.uniform1i(letterProg.u.uAtlas, 2);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+  gl.uniform1i(letterProg.u.uBloom, 3);
+  gl.uniform2f(letterProg.u.uRes, canvas.width, canvas.height);
+  gl.uniform2f(letterProg.u.uOrigin, view.ox * dpr, view.oy * dpr);
+  gl.uniform2f(letterProg.u.uCell, ch * CELL_ASPECT, ch);
+  gl.uniform2f(letterProg.u.uGrid, lay.cols, lay.rows);
+  gl.uniform1i(letterProg.u.uN, N);
+  // small letters average out to thin coverage; lift them so the picture holds when zoomed out
+  const s = Math.min(1, Math.max(0, (cellH() - 6) / 24));
+  gl.uniform1f(letterProg.u.uGain, 2.3 + (1.1 - 2.3) * s * s * (3 - 2 * s));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // the place under the cursor, or at screen centre when the cursor is away
+  const m = markAt(...(mouse || [innerWidth / 2, innerHeight / 2]));
+  const place = notice || (m ? m[2] : "");
+  const count = `${visibleLetters().toLocaleString("en-US")}`;
+  if (hud.place.textContent !== place) {
+    hud.place.textContent = place;
+    hud.place.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 240, easing: "ease-out" });   // soft change, not a flicker
+  }
+  if (hud.count.textContent !== count) hud.count.textContent = count;
+  frames++;
+  requestAnimationFrame(frame);
+}
+
+// for scripts/check.mjs: the state a resize or fps check needs to read
+window.letterLight = () => ({ W: innerWidth, H: innerHeight, cols: lay.cols, rows: lay.rows, zoom: +view.zoom.toFixed(3),
+  cellH: +cellH().toFixed(2), place: hud.place.textContent, letters: visibleLetters(), frames, font: FONT, glyphs: GLYPHS });
+
+// the atlas needs the glyph font loaded first; a web font in a later fallback would otherwise draw as a system font
+Promise.all([400, 700].map(w => document.fonts.load(`${w} 40px "${FONT}"`, GLYPH_LIST.join("")))).catch(() => {}).then(() => {
+  atlasTex = buildAtlas();
+  t0 = performance.now();
+  fit();
+  // ?zoom=12&at=3:16 opens zoomed in on a mark (or a character offset), for screenshots and links
+  if (params.has("zoom")) {
+    zoomAt(0, 0, Number(params.get("zoom")));
+    centreOn(offsetOf(params.get("at") || ""));
+    remember();
+    if (params.has("out")) pullBack(offsetOf(params.get("at") || ""));
+  }
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

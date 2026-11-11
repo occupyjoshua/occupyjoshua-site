@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Gospels, in Letters</title>
+<meta name="description" content="Each Gospel, every letter of it, lit as one picture. Zoom in to read.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="The Gospels, in Letters">
+<meta property="og:description" content="Each Gospel, every letter of it, lit as one picture. Zoom in to read.">
+<!-- shortcut: relative og:image, which some link scrapers ignore; make it absolute once the domain is chosen -->
+<meta property="og:image" content="../matthew/poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='24' font-size='24' text-anchor='middle' fill='%23e6d8b8'%3E%E2%9D%A7%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #e6d8b8; --dim: #a39579; --rule: #e6d8b8a0; --bg: #000; --bar: 40px; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  /* a slim bar above the book, so it never covers the book's own running head */
+  nav { position: relative; height: var(--bar); display: flex; align-items: center; justify-content: center; gap: 6px;
+        border-bottom: 1px solid #e6d8b830; font: 400 16px/1 "EB Garamond", "P052", Palatino, Georgia, serif; }
+  nav button, nav select { font: inherit; color: var(--ink); background: none; border: 0; cursor: pointer;
+        font-variant: all-small-caps; letter-spacing: 0.14em; }
+  nav button { font-size: 28px; font-variant: normal; padding: 0 14px 4px; }
+  nav button:disabled { color: #e6d8b830; cursor: default; }
+  nav select { appearance: none; text-align: center; padding: 6px 10px; }
+  nav select option { background: var(--bg); color: var(--ink); }
+  /* back to the contents page, out of the way of the centred picker */
+  #home { position: absolute; left: 16px; color: var(--dim); text-decoration: none; font-variant: all-small-caps; letter-spacing: 0.14em; }
+  #home:hover { color: var(--ink); }
+  @media (max-width: 480px) { #home span { display: none; } }
+  nav :focus-visible { outline: 1px solid var(--rule); outline-offset: 2px; }
+  iframe { display: block; width: 100%; height: calc(100% - var(--bar) - 1px); border: 0; opacity: 0; transition: opacity 0.6s ease; }
+  iframe.on { opacity: 1; }
+</style>
+</head>
+<body>
+<nav aria-label="Books">
+  <a id="home" href="../" aria-label="Contents">&#x2767;<span> Contents</span></a>
+  <button id="prev" aria-label="Previous book">&lsaquo;</button>
+  <select id="book" aria-label="Book">
+    <option value="matthew">Matthew</option>
+    <option value="mark">Mark</option>
+    <option value="luke">Luke</option>
+    <option value="john">John</option>
+    <option value="acts">Acts</option>
+    <option value="revelation">Revelation</option>
+  </select>
+  <button id="next" aria-label="Next book">&rsaquo;</button>
+</nav>
+<iframe id="page" title="The book, in letters"></iframe>
+<script>
+"use strict";
+// the book lives in the hash (#mark), so links and the back button land on it; no hash opens Matthew
+const select = document.getElementById("book"), frame = document.getElementById("page");
+const prev = document.getElementById("prev"), next = document.getElementById("next");
+const books = [...select.options].map(o => o.value);
+// the home page's push-in hands over ?zoom&at&t, so the first book opens where the push-in ended
+let opening = location.search;
+if (opening) history.replaceState(null, "", location.pathname + location.hash);
+frame.addEventListener("load", () => setTimeout(() => frame.classList.add("on"), 150));
+function show() {
+  const book = books.includes(location.hash.slice(1)) ? location.hash.slice(1) : books[0];
+  const i = books.indexOf(book);
+  select.value = book;
+  prev.disabled = i === 0;
+  next.disabled = i === books.length - 1;
+  // replace, not assign, so the frame does not add its own entries to the back stack
+  if (!frame.contentWindow.location.pathname.endsWith(`/${book}/`)) {
+    frame.classList.remove("on");
+    frame.contentWindow.location.replace(`../${book}/${opening}`);
+    opening = "";
+  }
+  document.title = `${select.options[i].text}, in Letters`;
+}
+const go = step => { location.hash = books[books.indexOf(select.value) + step]; };
+select.addEventListener("change", () => { location.hash = select.value; });
+prev.addEventListener("click", () => go(-1));
+next.addEventListener("click", () => go(1));
+addEventListener("hashchange", show);
+show();
+</script>
+</body>
+</html>

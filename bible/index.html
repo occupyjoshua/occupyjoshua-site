@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Bible, in Letters</title>
+<meta name="description" content="Each book of the Bible, every letter of it, lit as one picture. Zoom in to read.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="The Bible, in Letters">
+<meta property="og:description" content="Each book of the Bible, every letter of it, lit as one picture. Zoom in to read.">
+<!-- shortcut: relative og:image, which some link scrapers ignore; make it absolute once the domain is chosen -->
+<meta property="og:image" content="matthew/poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='24' font-size='24' text-anchor='middle' fill='%23e6d8b8'%3E%E2%9D%A7%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #e6d8b8; --dim: #a39579; --rule: #e6d8b8a0; --bg: #000; }
+  html { background: var(--bg); }
+  body { margin: 0; color: var(--ink); font: 400 19px/1.5 "EB Garamond", "P052", Palatino, Georgia, serif; }
+  a { color: inherit; }
+  /* the background: every book's still (a tall one on portrait screens), stacked, and one live book over them */
+  .bg, .bg img, .bg iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+  .bg { z-index: -1; pointer-events: none; }
+  .bg img { object-fit: cover; opacity: 0; transition: opacity 0.6s ease; }
+  .bg iframe { opacity: 0; transition: opacity 0.9s ease; }
+  .bg .on { opacity: 1; }
+  /* shade the side the words sit on, so they read over bright light */
+  .shade { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+           background: linear-gradient(90deg, #000e 0%, #000b 32rem, #0000 60rem); }
+  main { box-sizing: border-box; min-height: 100vh; max-width: 40rem; padding: 8vh 6vw 5vh;
+         display: flex; flex-direction: column; justify-content: center; transition: opacity 0.8s ease; }
+  h1 { margin: 0; font-weight: 400; font-size: 44px; line-height: 1.1; font-variant: small-caps; letter-spacing: 0.04em; }
+  .lede { margin: 18px 0 28px; color: var(--ink); font-style: italic; max-width: 28rem; }
+  .fleuron { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .fleuron i { width: 72px; height: 1px; background: linear-gradient(90deg, var(--rule), #0000); }
+  .fleuron i:first-child { width: 0; }
+  ol { list-style: none; margin: 36px 0 0; padding: 0; max-width: 28rem; }
+  ol a { display: block; padding: 7px 0 7px 28px; position: relative; text-decoration: none;
+         border-bottom: 1px solid #e6d8b826; }
+  ol li:first-child a { border-top: 1px solid #e6d8b826; }
+  ol a::before { content: "\2767"; position: absolute; left: 0; top: 10px; opacity: 0; transition: opacity 0.3s; }
+  ol a.on::before { opacity: 1; }
+  .name { font-size: 24px; font-variant: small-caps; letter-spacing: 0.06em; }
+  .scene { display: block; color: var(--dim); font-size: 16px; font-style: italic; }
+  .begin { align-self: flex-start; padding: 10px 22px 12px; border: 1px solid var(--rule); text-decoration: none;
+           font-variant: all-small-caps; letter-spacing: 0.16em; transition: background 0.3s; }
+  .begin:hover { background: #e6d8b818; }
+  a:focus-visible { outline: 1px solid var(--rule); outline-offset: 3px; }
+  footer { margin-top: 32px; color: var(--dim); font-size: 14px; }
+  /* the push-in, then black while the reader loads */
+  .fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+  body.going main { opacity: 0; pointer-events: none; }
+  body.going .shade { opacity: 0; transition: opacity 1.2s ease; }
+  body.gone .fade { opacity: 1; }
+  @media (max-width: 700px) {
+    .shade { background: #0009; }
+    h1 { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true">
+  <picture><source media="(max-aspect-ratio: 1/1)" srcset="matthew/still-tall.jpg"><img src="matthew/still.jpg" alt="" data-book="matthew" class="on"></picture>
+  <picture><source media="(max-aspect-ratio: 1/1)" srcset="mark/still-tall.jpg"><img src="mark/still.jpg" alt="" data-book="mark"></picture>
+  <picture><source media="(max-aspect-ratio: 1/1)" srcset="luke/still-tall.jpg"><img src="luke/still.jpg" alt="" data-book="luke"></picture>
+  <picture><source media="(max-aspect-ratio: 1/1)" srcset="john/still-tall.jpg"><img src="john/still.jpg" alt="" data-book="john"></picture>
+  <picture><source media="(max-aspect-ratio: 1/1)" srcset="acts/still-tall.jpg"><img src="acts/still.jpg" alt="" data-book="acts"></picture>
+  <picture><source media="(max-aspect-ratio: 1/1)" srcset="revelation/still-tall.jpg"><img src="revelation/still.jpg" alt="" data-book="revelation"></picture>
+  <iframe id="live" tabindex="-1" title=""></iframe>
+</div>
+<div class="shade"></div>
+<main>
+  <h1>The Bible, in Letters</h1>
+  <div class="fleuron" aria-hidden="true"><i></i>&#x2767;<i></i></div>
+  <p class="lede">Each book of the King James Bible, every letter of it, lit as one picture. From far away it is a scene; come close, and the scene is the text.</p>
+  <a class="begin" href="read/#matthew" data-book="matthew" data-at="5:14">Begin with Matthew &rsaquo;</a>
+  <ol>
+    <li><a href="read/#matthew" data-book="matthew" data-at="5:14"><span class="name">Matthew</span>
+      <span class="scene">A city that is set on an hill &middot; 5:14</span></a></li>
+    <li><a href="read/#mark" data-book="mark" data-at="4:39"><span class="name">Mark</span>
+      <span class="scene">The storm on the sea, and the calm &middot; 4:39</span></a></li>
+    <li><a href="read/#luke" data-book="luke" data-at="23:44"><span class="name">Luke</span>
+      <span class="scene">Darkness over all the earth &middot; 23:44</span></a></li>
+    <li><a href="read/#john" data-book="john" data-at="8:12"><span class="name">John</span>
+      <span class="scene">I am the light of the world &middot; 8:12</span></a></li>
+    <li><a href="read/#acts" data-book="acts" data-at="2:3"><span class="name">Acts</span>
+      <span class="scene">Cloven tongues like as of fire &middot; 2:3</span></a></li>
+    <li><a href="read/#revelation" data-book="revelation" data-at="6:14"><span class="name">Revelation</span>
+      <span class="scene">Heaven departed as a scroll &middot; 6:14</span></a></li>
+  </ol>
+  <footer>Zoom with the wheel or a pinch, drag to pan. Text: the King James Version, from Project Gutenberg.</footer>
+</main>
+<div class="fade"></div>
+<script>
+"use strict";
+const live = document.getElementById("live");
+const stills = [...document.querySelectorAll(".bg img")];
+const items = [...document.querySelectorAll("ol a")];
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+let shown = "matthew", ready = false, loadTimer = 0, going = false;
+
+// the live page loads with its HUD hidden; it fades in over the still once it has had a moment to draw
+live.addEventListener("load", () => {
+  const doc = live.contentDocument;
+  if (!doc || !live.contentWindow.location.pathname.endsWith(`/${shown}/`)) return;
+  doc.head.appendChild(doc.createElement("style")).textContent = ".hud, .margin { display: none !important; }";
+  // the scene starts drawing only once its font loads, which on a first visit can land well after load
+  const book = shown, w = live.contentWindow;
+  const show = () => {
+    if (book !== shown) return;   // a newer pick took over
+    let drawing = false; try { drawing = !!w.eval("atlasTex"); } catch {}
+    if (!drawing) return setTimeout(show, 50);
+    setTimeout(() => {
+      if (book !== shown) return;
+      // restart the scene's clock as it appears, so it starts on the still's moment (t=0, see tools/stills.mjs)
+      try { w.eval("t0 = performance.now()"); } catch {}
+      ready = true; live.classList.add("on");
+    }, 150);
+  };
+  show();
+});
+live.src = "matthew/";   // only after the listener above, or a fast load slips past it with its HUD showing
+
+// hover or focus picks the background: the still at once, the live scene a moment later
+function pick(book) {
+  if (going || book === shown) return;
+  shown = book; ready = false;
+  stills.forEach(img => img.classList.toggle("on", img.dataset.book === book));
+  items.forEach(a => a.classList.toggle("on", a.dataset.book === book));
+  live.classList.remove("on");
+  clearTimeout(loadTimer);
+  // wait out quick passes over the list, so only the book the pointer rests on loads
+  loadTimer = setTimeout(() => live.contentWindow.location.replace(`${book}/`), 250);
+}
+items.forEach(a => {
+  a.addEventListener("pointerenter", () => pick(a.dataset.book));
+  a.addEventListener("focus", () => pick(a.dataset.book));
+});
+items[0].classList.add("on");
+
+// the book page's own camera state; its top-level consts are not window properties, so reach them through eval
+const bridge = w => w.eval(`({ view, lay, cellH, maxZoom, clampView, cellOf, A: CELL_ASPECT,
+  offset: typeof offsetOf === "function" ? offsetOf : k => verseOffset(...k.split(":").map(Number)),
+  clock: () => (performance.now() - t0) / 1000 + (Number(params.get("t")) || 0) })`);
+
+// the camera, as in the demo: zoom grows evenly in log space while the verse glides from where it sits to the centre
+function camera(w, at) {
+  const P = bridge(w), v = P.view;
+  const [c, r] = P.cellOf(P.offset(at)), tx = c + 0.5, ty = r + 0.5;
+  v.zoom = 1; P.clampView();
+  const x0 = v.ox + tx * P.cellH() * P.A, y0 = v.oy + ty * P.cellH();
+  const end = Math.min(P.maxZoom(), 24 / P.lay.fitCell);   // about 24 px letters, readable
+  const shot = s => {
+    v.zoom = Math.pow(end, s);
+    v.ox = w.innerWidth / 2 + (x0 - w.innerWidth / 2) * (1 - s) - tx * P.cellH() * P.A;
+    v.oy = w.innerHeight / 2 + (y0 - w.innerHeight / 2) * (1 - s) - ty * P.cellH();
+    P.clampView();
+  };
+  return { shot, end, clock: P.clock };
+}
+const ease = s => s * s * s * (s * (s * 6 - 15) + 10);   // smootherstep, the demo's easing
+// without WebGL2 (or with it blocked here after a GPU reset) the live page never draws, so there is nothing to push into
+const webgl2 = !!document.createElement("canvas").getContext("webgl2");
+// the push-in plays on a first visit only; after that a book opens straight away, as under reduced motion
+const skipPush = () => { if (still.matches || !webgl2) return true; try { return localStorage.getItem("pushed") === "1"; } catch { return false; } };
+const PUSH_MS = 3200;
+
+function go(a) {
+  going = true;
+  document.body.classList.add("going");
+  const w = live.contentWindow, at = a.dataset.at;
+  // the reader opens where the push-in ends: same verse, same zoom, same moment in the scene
+  const leave = (zoom, t) => {
+    const key = a.dataset.book === "john" ? "verse" : "at";
+    const q = zoom ? `?zoom=${zoom.toFixed(1)}&${key}=${at}&t=${t.toFixed(1)}&out=1` : "";
+    document.body.classList.add("gone");
+    setTimeout(() => location.assign(`read/${q}#${a.dataset.book}`), 500);
+  };
+  if (skipPush()) return leave(0, 0);
+  try { localStorage.setItem("pushed", "1"); } catch {}
+  const { shot, end, clock } = camera(w, at);
+  const start = performance.now();
+  (function step(now) {
+    const s = Math.min(1, (now - start) / PUSH_MS);
+    shot(ease(s));
+    if (s < 1) requestAnimationFrame(step);
+    else leave(end, clock());
+  })(start);
+}
+
+// plain clicks push in; a new-tab or modified click stays an ordinary link
+document.querySelectorAll("a[data-at]").forEach(a => a.addEventListener("click", e => {
+  if (going || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  pick(a.dataset.book);
+  if (skipPush()) return go(a);
+  // the live page for this book may still be loading (a tap on a phone has no hover first)
+  const drawn = () => { try { return ready && live.contentWindow.eval("lay.cols > 0"); } catch { return false; } };
+  const wait = () => (drawn() ? go(a) : setTimeout(wait, 100));
+  wait();
+}));
+
+// coming back with the back button restores the page from cache mid-transition; reset it
+addEventListener("pageshow", e => { if (e.persisted) location.reload(); });
+</script>
+</body>
+</html>
