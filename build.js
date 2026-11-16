@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 
 const SUBSTACK = "https://occupyjoshua.substack.com";
 const FEATURED = "contrition"; // work slug shown in the intro hero
-const PINNED = ["coming-soon"]; // post slugs shown first, in this order ("Welcome and Introductions")
+const PINNED = ["pride"]; // post slugs shown first, in this order
 
 // ?v=<content hash> on assets, so browsers fetch a fresh copy whenever the file changes
 const ver = (f) => createHash("md5").update(readFileSync(f)).digest("hex").slice(0, 8);

@@ -21,7 +21,7 @@ The build stamps `assets/style.css` and `assets/previews.js` links with `?v=<con
 - Substack (occupyjoshua.substack.com) — the build fetches `/feed` and writes each post's full
   text to `blog/<slug>.html` with a canonical link and links back to Substack. The last good
   feed is cached in `substack.json`, used when offline. The feed holds only the latest ~20 posts.
-- Pinned posts: `PINNED` slugs at the top of `build.js` list first (now `coming-soon`, "Welcome and Introductions").
+- Pinned posts: `PINNED` slugs at the top of `build.js` list first (now `pride`).
 - `bible/` — copy of the bible-ascii site (committed files, minus demo/, tools, sources), embedded live on
   the Bible ASCII page. Refresh with `npm run sync:bible` after changing ~/Projects/bible-ascii.
 - `projects/`, `blog/` — generated; don't edit.
