@@ -7,11 +7,14 @@
 // Markdown files start with frontmatter:  ---\nkey: value\n---
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { marked } from "marked";
+import { createHash } from "node:crypto";
 
 const SUBSTACK = "https://occupyjoshua.substack.com";
 const FEATURED = "contrition"; // work slug shown in the intro hero
 const PINNED = ["coming-soon"]; // post slugs shown first, in this order ("Welcome and Introductions")
 
+// ?v=<content hash> on assets, so browsers fetch a fresh copy whenever the file changes
+const ver = (f) => createHash("md5").update(readFileSync(f)).digest("hex").slice(0, 8);
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const fmt = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 
@@ -74,7 +77,7 @@ ${description ? `<meta name="description" content="${esc(description)}">\n` : ""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="../assets/style.css?v=${ver("assets/style.css")}">
 </head>
 <body>
 <div class="wrap">
@@ -135,10 +138,12 @@ mkdirSync("blog");
 for (const p of posts) {
   const viaSubstack = p.link
     ? `<p class="substack">This is also on Substack. <a href="${p.link}">Comment there</a> or <a href="${SUBSTACK}/subscribe">subscribe</a>.</p>\n`
-    : "";
+    : p.x
+      ? `<p class="substack">This is also on X. <a href="${esc(p.x)}">Reply there</a>.</p>\n`
+      : "";
   writeFileSync(
     `blog/${p.slug}.html`,
-    page({ title: p.title, canonical: p.link }, `<article>\n<h1>${esc(p.title)}</h1>\n<p class="date">${fmt(p.date)}</p>\n${p.html}\n${viaSubstack}</article>`),
+    page({ title: p.title, canonical: p.link || p.x }, `<article>\n<h1>${esc(p.title)}</h1>\n<p class="date">${fmt(p.date)}</p>\n${p.html}\n${viaSubstack}</article>`),
   );
 }
 
@@ -154,6 +159,7 @@ const list = (items, prefix, withExcerpt = false) =>
 writeFileSync("blog/index.html", page({ title: "Writing — Joshua" }, `<article>\n<h1>Writing</h1>\n${list(posts, "")}\n<p class="substack"><a href="${SUBSTACK}/subscribe">Subscribe on Substack</a></p>\n</article>`));
 
 let home = readFileSync("index.html", "utf8");
+home = home.replace(/assets\/(style\.css|previews\.js)(\?v=\w+)?"/g, (m, f) => `assets/${f}?v=${ver(`assets/${f}`)}"`);
 home = replaceBlock(home, "work", cards);
 // intro hero, left: the featured project, linking on to Work
 const star = work.find((w) => w.slug === FEATURED);
@@ -180,7 +186,7 @@ home = replaceBlock(home, "pinned", lead
       </div>
     </div>`
   : "");
-home = replaceBlock(home, "posts", list(posts.filter((p) => p !== lead).slice(0, 5), "blog/", true));
+home = replaceBlock(home, "posts", list(posts.filter((p) => p !== lead).slice(0, 7), "blog/", true));
 writeFileSync("index.html", home);
 
 console.log(`built ${work.length} project(s), ${local.length} local + ${substack.length} Substack post(s)`);

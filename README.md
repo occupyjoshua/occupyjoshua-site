@@ -4,6 +4,7 @@ Personal site: portfolio hub + blog. Look taken from the @occupyjoshua X profile
 (lime #c1fd05, violet #3e01fe, black, Press Start 2P + Space Grotesk, `+` marks, the bust).
 
 `npm run build` regenerates everything below; `npm run serve` builds and serves at http://localhost:8080.
+The build stamps `assets/style.css` and `assets/previews.js` links with `?v=<content hash>`, so changes show without a hard reload.
 
 - `index.html` — home page, hand-edited, except the blocks between
   `<!-- work:start/end -->` and `<!-- posts:start/end -->`, which the build writes.
@@ -13,6 +14,10 @@ Personal site: portfolio hub + blog. Look taken from the @occupyjoshua X profile
   Optional `live:` (space-separated page URLs) makes the card load one at random, running, instead of
   the loop; the Bible ASCII card uses it to show a live book with its HUD hidden.
 - `posts/*.md` — posts written here. Frontmatter: `title`, `date: YYYY-MM-DD`, optional `draft: true`.
+  Optional `x:` (the post's x.com URL) sets the canonical link and adds an "also on X" note; the three
+  X Articles (Pride, Christian Rage Bait, Spiritual Malaise of LA) were copied in this way on 2026-11-16,
+  covers saved as `assets/media/x-<slug>.jpg`. Scripture quotes go in KJV: when copying a post in, swap any
+  other translation's wording for KJV and label it (KJV); the author's own words stay unchanged.
 - Substack (occupyjoshua.substack.com) — the build fetches `/feed` and writes each post's full
   text to `blog/<slug>.html` with a canonical link and links back to Substack. The last good
   feed is cached in `substack.json`, used when offline. The feed holds only the latest ~20 posts.
